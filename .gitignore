@@ -28,3 +28,11 @@ src-tauri/target/
 # Secrets
 *.key
 *.pem
+
+# Project-local tooling and test output
+.toolchain/
+.tools/
+test-results/
+playwright-report/
+*.tsbuildinfo
+src-tauri/gen/

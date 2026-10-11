@@ -1,0 +1,30 @@
+# Telemetry data
+data/
+*.xrk
+*.xrz
+
+# macOS
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node / React
+node_modules/
+dist/
+.env
+.env.*
+
+# Rust / Tauri
+target/
+src-tauri/target/
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets
+*.key
+*.pem

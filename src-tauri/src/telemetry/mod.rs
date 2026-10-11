@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+mod spatial;
+pub use spatial::{Alignment, ChannelMean, MappingPoint, Segment, SegmentMetrics};
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -47,6 +49,8 @@ pub struct Series {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct TrackPoint {
+    #[serde(rename = "breakBefore")]
+    pub break_before: bool,
     pub x: f64,
     pub y: f64,
     pub position: f64,
@@ -55,6 +59,7 @@ pub struct TrackPoint {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LapView {
+    pub mapping: Vec<MappingPoint>,
     pub lap_id: String,
     pub duration: f64,
     pub length: Option<f64>,
@@ -63,12 +68,17 @@ pub struct LapView {
     pub warnings: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Delta {
+    pub method: String,
+    pub uncertainty_seconds: Option<f64>,
     pub x: Vec<f64>,
     pub values: Vec<f64>,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct Analysis {
+    pub alignment: Alignment,
+    pub segments: Vec<Segment>,
     pub primary: LapView,
     pub comparison: Option<LapView>,
     pub delta: Option<Delta>,
@@ -388,6 +398,7 @@ fn speed(s: &Session) -> Option<(&Channel, f64)> {
             Some((c, factor))
         })
 }
+#[derive(Clone)]
 struct Distance {
     times: Vec<f64>,
     meters: Vec<f64>,
@@ -434,10 +445,23 @@ fn distance(s: &Session, l: &Lap) -> Option<Distance> {
         meters: d,
     })
 }
-fn lap_view(s: &Session, l: &Lap, axis: &str, ids: &[String], d: Option<&Distance>) -> LapView {
+fn lap_view(
+    s: &Session,
+    l: &Lap,
+    axis: &str,
+    ids: &[String],
+    d: Option<&Distance>,
+    reference_time: Option<&Distance>,
+) -> LapView {
     let pos = |t: f64| {
         if axis == "time" {
-            Some(t - l.start)
+            if let Some(reference) = reference_time {
+                let meters = d.and_then(|d| interpolate(&d.times, &d.meters, t))?;
+                interpolate(&reference.meters, &reference.times, meters)
+                    .map(|t| t - reference.times[0])
+            } else {
+                Some(t - l.start)
+            }
         } else {
             d.and_then(|d| interpolate(&d.times, &d.meters, t))
         }
@@ -509,22 +533,40 @@ fn lap_view(s: &Session, l: &Lap, axis: &str, ids: &[String], d: Option<&Distanc
             })
             .unwrap_or((0., 0.));
         let (t, v) = clipped(lat, l);
+        let mut previous: Option<(f64, f64, f64)> = None;
+        let mut broken = false;
+        let lon_gaps = source_gaps(lon);
         for (t, lat) in t.into_iter().zip(v) {
-            let Some(lon) = interpolate(&lon.times, &lon.values, t) else {
+            let Some(lon) = sample_without_gaps(lon, t, &lon_gaps) else {
+                broken = true;
                 continue;
             };
             if lat.abs() > 90. || lon.abs() > 180. || lat == 0. || lon == 0. {
+                broken = true;
                 continue;
             }
             if let Some(fix) = s.channels.iter().find(|c| c.id == "gps-fix") {
-                if interpolate(&fix.times, &fix.values, t).unwrap_or(0.) < 3. {
+                if !spatial::bracket(fix, t).is_some_and(|(a, b)| a >= 3. && b >= 3.) {
+                    broken = true;
                     continue;
                 }
             }
             if let Some(position) = pos(t) {
+                let x = (lon - origin.1).to_radians() * 6371000. * origin.0.to_radians().cos();
+                let y = (lat - origin.0).to_radians() * 6371000.;
+                if previous
+                    .is_some_and(|(pt, px, py)| (x - px).hypot(y - py) > 80. * (t - pt) + 15.)
+                {
+                    broken = true;
+                    continue;
+                }
+                let break_before = broken || previous.is_some_and(|(pt, _, _)| t - pt > 0.35);
+                previous = Some((t, x, y));
+                broken = false;
                 track.push(TrackPoint {
-                    x: (lon - origin.1).to_radians() * 6371000. * origin.0.to_radians().cos(),
-                    y: (lat - origin.0).to_radians() * 6371000.,
+                    break_before,
+                    x,
+                    y,
                     position,
                     speed: speed(s)
                         .and_then(|(c, f)| interpolate(&c.times, &c.values, t).map(|v| v * f)),
@@ -545,6 +587,19 @@ fn lap_view(s: &Session, l: &Lap, axis: &str, ids: &[String], d: Option<&Distanc
         warnings.push("Partial lap: excluded from fastest-lap ranking.".into());
     }
     LapView {
+        mapping: reference_time
+            .and(d)
+            .map(|d| {
+                d.times
+                    .iter()
+                    .zip(&d.meters)
+                    .map(|(&t, &meters)| MappingPoint {
+                        meters,
+                        time: t - l.start,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         lap_id: l.id.clone(),
         duration: l.duration,
         length: d.and_then(|d| d.meters.last().copied()),
@@ -576,12 +631,21 @@ pub fn analyze(
                 .ok_or("Comparison lap not found")
         })
         .transpose()?;
-    let pd = distance(s, p);
-    let cd = c.and_then(|l| distance(s, l));
+    let spatial = spatial::align(s, p, c);
+    let (mut alignment, geometry) = match spatial {
+        Ok(g) => (g.alignment(), Some(g)),
+        Err(note) => (Alignment::unavailable(note), None),
+    };
+    let pd = geometry
+        .as_ref()
+        .map(|g| g.primary.clone())
+        .or_else(|| distance(s, p));
+    let cd = geometry
+        .as_ref()
+        .and_then(|g| g.comparison.clone())
+        .or_else(|| c.and_then(|l| distance(s, l)));
     if axis == "distance" && (pd.is_none() || (c.is_some() && cd.is_none())) {
-        return Err(
-            "Distance view needs continuous speed data in known units. Switch to time.".into(),
-        );
+        return Err("Distance view needs validated GPS alignment or continuous speed data in known units. Switch to time.".into());
     }
     let mut warnings = vec![];
     let delta = if let (Some(c), Some(pd), Some(cd)) = (c, pd.as_ref(), cd.as_ref()) {
@@ -591,7 +655,11 @@ pub fn analyze(
             warnings.push("Delta unavailable: laps are partial or their measured lengths differ by more than 5%.".into());
             None
         } else {
-            warnings.push("Estimated delta compares equal normalized distance; positive values mean the selected lap is slower.".into());
+            let precise = geometry.is_some();
+            if !precise {
+                alignment.method = "estimated".into();
+                warnings.push("Estimated delta compares equal normalized distance, not physical position; positive values mean the selected lap is slower.".into());
+            }
             let mut x = vec![];
             let mut values = vec![];
             for i in 0..=500 {
@@ -608,15 +676,49 @@ pub fn analyze(
                     values.push((pt - p.start) - (ct - c.start));
                 }
             }
-            Some(Delta { x, values })
+            // Spatial endpoints use validated start/finish positions; fallback
+            // endpoints verify only recorded durations, never physical correspondence.
+            if values
+                .last()
+                .is_some_and(|v| (*v - (p.duration - c.duration)).abs() > 0.002)
+            {
+                warnings.push(
+                    "Delta withheld: aligned endpoint disagrees with recorded lap durations."
+                        .into(),
+                );
+                None
+            } else {
+                Some(Delta {
+                    x,
+                    values,
+                    method: if precise { "spatial" } else { "estimated" }.into(),
+                    uncertainty_seconds: alignment.timing_uncertainty_s,
+                })
+            }
         }
     } else {
         None
     };
+    let segments = geometry
+        .as_ref()
+        .map(|g| g.segments(s, p, c, axis, channel_ids))
+        .unwrap_or_default();
+    warnings.extend(alignment.notes.clone());
+    let reference_time = geometry.as_ref().map(|g| &g.primary);
+    let mut primary = lap_view(s, p, axis, channel_ids, pd.as_ref(), reference_time);
+    let mut comparison = c.map(|c| lap_view(s, c, axis, channel_ids, cd.as_ref(), reference_time));
+    if let Some(g) = &geometry {
+        primary.track = g.track(s, p, false, axis);
+        if let (Some(view), Some(lap)) = (&mut comparison, c) {
+            view.track = g.track(s, lap, true, axis);
+        }
+    }
     Ok(Analysis {
-        primary: lap_view(s, p, axis, channel_ids, pd.as_ref()),
-        comparison: c.map(|c| lap_view(s, c, axis, channel_ids, cd.as_ref())),
+        primary,
+        comparison,
         delta,
+        alignment,
+        segments,
         warnings,
     })
 }

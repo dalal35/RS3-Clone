@@ -33,8 +33,22 @@ try {
  await page.mouse.move(box.x+box.width*.4,box.y+50);await page.waitForTimeout(50);
  assert(Number(await page.locator('output').textContent())>0,'Cursor position updates');
  assert((await page.locator('.readout').first().innerText()).match(/\d/),'Live numerical readout updates');
+ const segments=page.locator('.track-segment');
+ assert(await segments.count()>0,'Real-session analysis must expose selectable GPS sections');
+ await segments.first().click();await page.waitForTimeout(100);
+ const focused=await ranges();
+ assert(focused[0].max-focused[0].min<before[0].max-before[0].min,'Track section click focuses telemetry');
+ assert(focused.every(range=>range.min===focused[0].min&&range.max===focused[0].max),'Track focus synchronizes all plots');
+ assert(focused.every(range=>range.cursor!=null&&Math.abs(range.cursor-(range.min+range.max)/2)<.01),'Track focus synchronizes plot cursors to section midpoint');
+ assert.equal(await page.locator('.segment-card.selected').count(),1,'Track click selects the corresponding comparison row');
+ assert.equal(await page.locator('.primary-marker circle').count(),1,'Track click synchronizes the map cursor');
+ await page.locator('.segment-card').last().click();await page.waitForTimeout(100);
+ assert.equal(await page.locator('.track-segment.selected').count(),1,'Comparison row focuses the map section');
+ await page.getByRole('button',{name:'Reset',exact:true}).click();await page.waitForTimeout(100);
+ assert.equal(await page.locator('.segment-card.selected').count(),0,'Reset clears focused comparison');
+ assert.equal(await page.locator('.track-segment.selected').count(),0,'Reset clears focused map section');
  assert.deepEqual(errors,[]);
- console.log(`PASS: real-XRK plots (${before.length} channels): synchronized zoom, pan, reset and live cursor`);
+ console.log(`PASS: real-XRK plots (${before.length} channels): synchronized zoom, pan, reset, cursor and track-section focus`);
 } finally {
  await browser?.close();await server?.close();unlinkSync('.tools/analysis.json');
 }

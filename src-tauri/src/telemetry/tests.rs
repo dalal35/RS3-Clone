@@ -188,3 +188,363 @@ fn stationary_distance_interpolation_stays_finite() {
         Some(2.)
     );
 }
+
+// Synthetic geometry has known angular position; radial line changes deliberately make
+// normalized travelled distance disagree with the common physical track position.
+fn gps_session() -> Session {
+    let mut s = sample();
+    s.laps[0].end = 20.;
+    s.laps[0].duration = 20.;
+    s.laps[1].start = 20.;
+    s.laps[1].end = 42.;
+    s.laps[1].duration = 22.;
+    let mut times = vec![];
+    let mut lat = vec![];
+    let mut lon = vec![];
+    let mut speeds = vec![];
+    for i in 0..=420 {
+        let t = i as f64 / 10.;
+        let (u, duration, second) = if t <= 20. {
+            (t / 20., 20., false)
+        } else {
+            ((t - 20.) / 22., 22., true)
+        };
+        let theta = std::f64::consts::TAU * u;
+        let radius = 60. + if second { 5. * theta.sin() } else { 0. };
+        let derivative = if second { 5. * theta.cos() } else { 0. };
+        times.push(t);
+        lat.push(40. + (radius * theta.sin() / 6371000.).to_degrees());
+        lon.push(
+            -86. + (radius * theta.cos() / (6371000. * 40_f64.to_radians().cos())).to_degrees(),
+        );
+        speeds.push(
+            (radius * radius + derivative * derivative).sqrt() * std::f64::consts::TAU / duration,
+        );
+    }
+    s.channels = vec![];
+    for (id, name, unit, values) in [
+        ("gps-latitude", "Latitude", "deg", lat),
+        ("gps-longitude", "Longitude", "deg", lon),
+        ("gps-speed", "GPS Speed", "m/s", speeds),
+        ("gps-fix", "GPS Fix", "", vec![3.; times.len()]),
+        (
+            "gps-accuracy",
+            "GPS Position Accuracy",
+            "m",
+            vec![0.6; times.len()],
+        ),
+        ("rpm", "RPM", "rpm", vec![5000.; times.len()]),
+    ] {
+        s.channels.push(Channel {
+            id: id.into(),
+            name: name.into(),
+            unit: unit.into(),
+            times: times.clone(),
+            values,
+        });
+    }
+    s
+}
+#[test]
+fn spatial_mapping_matches_position_despite_different_racing_line_lengths() {
+    let s = gps_session();
+    let a = analyze(&s, "a", Some("b"), "distance", &["rpm".into()]).unwrap();
+    assert_eq!(a.alignment.method, "spatial");
+    let c = a.comparison.as_ref().unwrap();
+    let p = c
+        .mapping
+        .iter()
+        .find(|p| (p.time - 5.5).abs() < 0.051)
+        .unwrap();
+    let length = a.alignment.reference_length.unwrap();
+    assert!(
+        (p.meters / length - 0.25).abs() < 0.006,
+        "quarter-circle projects to same place: {}",
+        p.meters / length
+    );
+    let d = a.delta.unwrap();
+    assert_eq!(d.method, "spatial");
+    assert!((d.values.last().unwrap() + 2.).abs() < 1e-9);
+    assert!(a
+        .segments
+        .iter()
+        .all(|seg| seg.primary.entry_speed.is_some() && seg.comparison.is_some()));
+    assert!(a
+        .segments
+        .iter()
+        .all(|seg| seg.primary.channels[0].unit == "rpm"));
+}
+#[test]
+fn noisy_gps_outliers_are_rejected_and_small_noise_retains_alignment() {
+    let mut s = gps_session();
+    for c in s.channels.iter_mut().filter(|c| c.id == "gps-latitude") {
+        for (i, v) in c.values.iter_mut().enumerate() {
+            *v += (i as f64 * 1.7).sin() * 0.000002;
+        }
+        c.values[60] += 0.02;
+    }
+    let a = analyze(&s, "a", Some("b"), "distance", &[]).unwrap();
+    assert_eq!(a.alignment.method, "spatial");
+    assert!(a.alignment.notes.iter().any(|n| n.contains("rejected")));
+}
+#[test]
+fn invalid_or_missing_gps_never_claims_spatial_precision() {
+    for bad in ["gps-fix", "gps-accuracy", "gap", "crossing"] {
+        let mut s = gps_session();
+        match bad {
+            "gps-fix" => {
+                s.channels.iter_mut().find(|c| c.id == bad).unwrap().values[250..290].fill(2.)
+            }
+            "gps-accuracy" => s
+                .channels
+                .iter_mut()
+                .find(|c| c.id == bad)
+                .unwrap()
+                .values
+                .fill(30.),
+            "gap" => {
+                for c in s
+                    .channels
+                    .iter_mut()
+                    .filter(|c| c.id == "gps-latitude" || c.id == "gps-longitude")
+                {
+                    c.times.drain(250..280);
+                    c.values.drain(250..280);
+                }
+            }
+            _ => {
+                s.channels
+                    .iter_mut()
+                    .find(|c| c.id == "gps-longitude")
+                    .unwrap()
+                    .values[420] += 0.001
+            }
+        }
+        let a = analyze(&s, "a", Some("b"), "time", &[]).unwrap();
+        assert_ne!(a.alignment.method, "spatial", "{bad}");
+        assert!(
+            a.segments.iter().all(|x| x.comparison.is_none()),
+            "unvalidated comparative metrics must not leak"
+        );
+    }
+}
+#[test]
+fn spatial_time_axis_uses_primary_elapsed_time_and_endpoint_invariant() {
+    let s = gps_session();
+    let a = analyze(&s, "a", Some("b"), "time", &["rpm".into()]).unwrap();
+    assert_eq!(a.alignment.method, "spatial");
+    assert_eq!(
+        a.comparison.as_ref().unwrap().series[0].x.last(),
+        Some(&20.)
+    );
+    let d = a.delta.unwrap();
+    assert_eq!(d.x.first(), Some(&0.));
+    assert_eq!(d.x.last(), Some(&20.));
+    assert!((d.values.last().unwrap() - (s.laps[0].duration - s.laps[1].duration)).abs() < 1e-9);
+    assert!(a.segments.iter().all(|x| x.start >= 0. && x.end <= 20.));
+}
+
+fn stadium_session() -> Session {
+    let mut s = gps_session();
+    let turn_time = std::f64::consts::PI * 30. / 12.;
+    let cycle = 10. + 2. * turn_time;
+    let times = s.channels[0].times.clone();
+    let mut lat = vec![];
+    let mut lon = vec![];
+    let mut speed = vec![];
+    for t in times {
+        let (u, duration) = if t <= 20. {
+            (t / 20., 20.)
+        } else {
+            ((t - 20.) / 22., 22.)
+        };
+        let tt = u * cycle;
+        let (x, y, v) = if tt <= 5. {
+            (tt * 20., 0., 20.)
+        } else if tt <= 5. + turn_time {
+            let a = -std::f64::consts::FRAC_PI_2 + (tt - 5.) * 12. / 30.;
+            (100. + 30. * a.cos(), 30. + 30. * a.sin(), 12.)
+        } else if tt <= 10. + turn_time {
+            (100. - (tt - 5. - turn_time) * 20., 60., 20.)
+        } else {
+            let a = std::f64::consts::FRAC_PI_2 + (tt - 10. - turn_time) * 12. / 30.;
+            (30. * a.cos(), 30. + 30. * a.sin(), 12.)
+        };
+        lat.push(40. + (y / 6371000.).to_degrees());
+        lon.push(-86. + (x / (6371000. * 40_f64.to_radians().cos())).to_degrees());
+        speed.push(v * cycle / duration);
+    }
+    s.channels
+        .iter_mut()
+        .find(|c| c.id == "gps-latitude")
+        .unwrap()
+        .values = lat;
+    s.channels
+        .iter_mut()
+        .find(|c| c.id == "gps-longitude")
+        .unwrap()
+        .values = lon;
+    s.channels
+        .iter_mut()
+        .find(|c| c.id == "gps-speed")
+        .unwrap()
+        .values = speed;
+    s
+}
+#[test]
+fn geometry_and_speed_profile_find_two_hairpins_with_straights() {
+    let s = stadium_session();
+    let a = analyze(&s, "a", Some("b"), "distance", &["rpm".into()]).unwrap();
+    assert_eq!(a.alignment.method, "spatial");
+    let corners = a
+        .segments
+        .iter()
+        .filter(|s| s.kind == "corner")
+        .collect::<Vec<_>>();
+    assert_eq!(corners.len(), 2);
+    assert!(a.segments.iter().filter(|s| s.kind == "straight").count() >= 2);
+    assert!(corners
+        .iter()
+        .all(|s| s.primary.min_speed.unwrap() < s.primary.entry_speed.unwrap()));
+    assert!(a
+        .segments
+        .iter()
+        .all(|s| s.end_meters - s.start_meters > s.uncertainty_meters));
+    assert!(
+        (a.segments
+            .iter()
+            .map(|s| s.delta_seconds.unwrap())
+            .sum::<f64>()
+            + 2.)
+            .abs()
+            < 1e-8
+    );
+    assert!((a.segments.iter().map(|s| s.primary.elapsed).sum::<f64>() - 20.).abs() < 1e-8);
+    assert!(a
+        .segments
+        .windows(2)
+        .all(|s| (s[0].end_meters - s[1].start_meters).abs() < 1e-8));
+}
+#[test]
+fn reverse_direction_fails_same_position_heading_gate() {
+    let mut s = gps_session();
+    for c in s
+        .channels
+        .iter_mut()
+        .filter(|c| c.id == "gps-latitude" || c.id == "gps-longitude")
+    {
+        c.values[200..=420].reverse();
+    }
+    let a = analyze(&s, "a", Some("b"), "time", &[]).unwrap();
+    assert_ne!(a.alignment.method, "spatial");
+    assert!(a.segments.is_empty());
+}
+#[test]
+fn unknown_accuracy_is_disclosed_as_low_resolution_not_zero_error() {
+    let mut s = gps_session();
+    s.channels
+        .iter_mut()
+        .find(|c| c.id == "gps-accuracy")
+        .unwrap()
+        .values
+        .fill(0.);
+    let a = analyze(&s, "a", None, "distance", &[]).unwrap();
+    assert_eq!(a.alignment.method, "spatial");
+    assert!(a.alignment.position_uncertainty_m.unwrap() >= 10.);
+    assert!(a.alignment.notes.iter().any(|s| s.contains("5 m")));
+}
+#[test]
+fn invalid_fix_cannot_invent_corner_minimum_speed_or_channel_mean() {
+    let mut s = stadium_session();
+    s.channels
+        .iter_mut()
+        .find(|c| c.id == "gps-fix")
+        .unwrap()
+        .values[95] = 2.;
+    s.channels
+        .iter_mut()
+        .find(|c| c.id == "gps-speed")
+        .unwrap()
+        .values[95] = 0.;
+    let a = analyze(&s, "a", Some("b"), "distance", &["gps-speed".into()]).unwrap();
+    assert_eq!(a.alignment.method, "spatial");
+    let segment = a
+        .segments
+        .iter()
+        .find(|s| s.primary.min_speed.is_none())
+        .unwrap();
+    assert!(segment.primary.channels[0].mean.is_none());
+    assert!(a.alignment.coverage < 1.);
+}
+#[test]
+fn fallback_track_breaks_across_invalid_gps_and_long_gaps() {
+    let mut s = gps_session();
+    s.channels
+        .iter_mut()
+        .find(|c| c.id == "gps-fix")
+        .unwrap()
+        .values[50..80]
+        .fill(2.);
+    let a = analyze(&s, "a", Some("b"), "time", &[]).unwrap();
+    assert_ne!(a.alignment.method, "spatial");
+    assert!(a.primary.track.iter().any(|p| p.break_before));
+}
+
+#[test]
+fn stationary_positions_cannot_define_unique_spatial_crossing_times() {
+    let mut s = gps_session();
+    for i in 0..=200 {
+        let t = i as f64 / 10.;
+        let (phase, factor) = if t <= 5. {
+            (t, 1.)
+        } else if t <= 6. {
+            (5., 0.)
+        } else {
+            (5. + (t - 6.) * 15. / 14., 15. / 14.)
+        };
+        let theta = std::f64::consts::TAU * phase / 20.;
+        s.channels
+            .iter_mut()
+            .find(|c| c.id == "gps-latitude")
+            .unwrap()
+            .values[i] = 40. + (60. * theta.sin() / 6371000.).to_degrees();
+        s.channels
+            .iter_mut()
+            .find(|c| c.id == "gps-longitude")
+            .unwrap()
+            .values[i] =
+            -86. + (60. * theta.cos() / (6371000. * 40_f64.to_radians().cos())).to_degrees();
+        s.channels
+            .iter_mut()
+            .find(|c| c.id == "gps-speed")
+            .unwrap()
+            .values[i] = 60. * std::f64::consts::TAU / 20. * factor;
+    }
+    let a = analyze(&s, "a", Some("b"), "time", &[]).unwrap();
+    assert_ne!(a.alignment.method, "spatial");
+}
+#[test]
+fn segment_channel_means_are_time_weighted_and_suppress_outages() {
+    let mut s = stadium_session();
+    let c = s.channels.iter_mut().find(|c| c.id == "rpm").unwrap();
+    c.times = vec![0., 0.1, 20., 42.];
+    c.values = c.times.iter().map(|t| 100. + 10. * t).collect();
+    // This sparse channel intentionally has no classified nominal cadence, but
+    // piecewise-linear integration of this known linear function remains exact.
+    let a = analyze(&s, "a", Some("b"), "time", &["rpm".into()]).unwrap();
+    for seg in &a.segments {
+        let mean = seg.primary.channels[0].mean.unwrap();
+        assert!((mean - (100. + 10. * (seg.start + seg.end) * 0.5)).abs() < 1e-6);
+    }
+    let c = s.channels.iter_mut().find(|c| c.id == "rpm").unwrap();
+    c.times = (0..=420)
+        .filter(|i| !(50..90).contains(i))
+        .map(|i| i as f64 / 10.)
+        .collect();
+    c.values = vec![5000.; c.times.len()];
+    let a = analyze(&s, "a", Some("b"), "time", &["rpm".into()]).unwrap();
+    assert!(a
+        .segments
+        .iter()
+        .any(|seg| seg.primary.channels[0].mean.is_none()));
+}

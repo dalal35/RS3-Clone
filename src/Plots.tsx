@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import type { Analysis, Axis, Series } from './types';
+import type { Analysis, Axis, Series, TrackSegment } from './types';
 import { interpolate, mergeSeries } from './telemetry';
 type Row={id:string;name:string;unit:string;primary:Series;comparison?:Series};
-export default function Plots({analysis,axis,onCursor,resetVersion}:{analysis:Analysis;axis:Axis;onCursor:(x:number|null)=>void;resetVersion:number}){
+export default function Plots({analysis,axis,onCursor,resetVersion,focus=null}:{analysis:Analysis;axis:Axis;onCursor:(x:number|null)=>void;resetVersion:number;focus?:TrackSegment|null}){
   const host=useRef<HTMLDivElement>(null),plots=useRef<uPlot[]>([]),callback=useRef(onCursor);callback.current=onCursor;
   const readouts=useRef(new Map<string,HTMLElement>());
   const rows:Row[]=analysis.primary.series.map(s=>({id:s.channelId,name:s.name,unit:s.unit,primary:s,comparison:analysis.comparison?.series.find(c=>c.channelId===s.channelId)}));
-  if(analysis.delta)rows.push({id:'__delta',name:'Estimated time delta',unit:'s',primary:{channelId:'__delta',name:'Estimated time delta',unit:'s',...analysis.delta}});
+  if(analysis.delta)rows.push({id:'__delta',name:analysis.delta.method==='spatial'?'Spatial time delta':'Estimated time delta',unit:'s',primary:{channelId:'__delta',name:analysis.delta.method==='spatial'?'Spatial time delta':'Estimated time delta',unit:'s',...analysis.delta}});
   useEffect(()=>{
     if(!host.current)return;
     const nodes=host.current.querySelectorAll<HTMLDivElement>('[data-plot]');
@@ -33,6 +33,7 @@ export default function Plots({analysis,axis,onCursor,resetVersion}:{analysis:An
     });
     return()=>{plots.current.forEach(p=>(p as uPlot&{dispose:()=>void}).dispose());plots.current=[];};
   },[analysis,axis]);
-  useEffect(()=>{plots.current.forEach(p=>p.setScale('x',{min:analysis.primary.series[0]?.x[0]??0,max:Math.max(...analysis.primary.series.map(s=>s.x[s.x.length-1]??0),1)}));},[resetVersion]);
-  return <div ref={host} className="plots">{rows.map(row=><section className="plot-row" key={row.id}><div className="plot-label"><span>{row.name}</span><span className="mono readout" ref={el=>{if(el)readouts.current.set(row.id,el);}} >— {row.unit}</span></div><div data-plot /></section>)}<div className="axis-label">{axis==='distance'?'Distance into lap · meters':'Time into lap · seconds'}</div></div>;
+  useEffect(()=>{plots.current.forEach(p=>p.setScale('x',{min:analysis.primary.series[0]?.x[0]??0,max:Math.max(...analysis.primary.series.map(s=>s.x[s.x.length-1]??0),analysis.delta?.x.at(-1)??0,1)}));},[resetVersion]);
+  useEffect(()=>{if(focus&&focus.end>focus.start)plots.current.forEach(p=>{p.batch(()=>p.setScale('x',{min:focus.start,max:focus.end}));p.setCursor({left:p.valToPos((focus.start+focus.end)/2,'x'),top:30});});},[focus,analysis]);
+  return <div ref={host} className="plots">{rows.map(row=><section className="plot-row" key={row.id}><div className="plot-label"><span>{row.name}</span><span className="mono readout" ref={el=>{if(el)readouts.current.set(row.id,el);}} >— {row.unit}</span></div><div data-plot /></section>)}<div className="axis-label">{axis==='distance'?analysis.alignment?.method==='spatial'?'Reference track position · meters':'Distance into lap · meters':analysis.alignment?.method==='spatial'?'Primary lap time at aligned position · seconds':'Time into lap · seconds'}</div></div>;
 }

@@ -1,6 +1,6 @@
 # Apex Telemetry · RS3-Clone
 
-A local-first Apple Silicon macOS telemetry workspace. Import AiM XRK sessions, select laps, compare speed and RPM, and follow the racing line alongside synchronized plots.
+A local-first Apple Silicon macOS telemetry workspace. Import AiM XRK sessions, select laps, compare speed and RPM, and follow the racing line alongside synchronized plots. Validated GPS geometry aligns laps by physical track position; approximate corner sections expose speed, time and channel differences with explicit resolution estimates. Click a track section to focus the whole comparison. When GPS cannot support spatial alignment, delta is clearly labeled estimated or withheld.
 
 ## Develop
 

@@ -62,6 +62,7 @@ pub struct Library {
     directory: PathBuf,
     manifest: Manifest,
     cache: HashMap<String, Session>,
+    advanced_cache: HashMap<String, Value>,
     warnings: Vec<String>,
 }
 fn now() -> u64 {
@@ -168,6 +169,7 @@ impl Library {
             directory,
             manifest,
             cache: HashMap::new(),
+            advanced_cache: HashMap::new(),
             warnings,
         })
     }
@@ -313,6 +315,7 @@ impl Library {
         Ok(session)
     }
     pub fn remove(&mut self, id: &str) -> Result<LibrarySnapshot, String> {
+        self.advanced_cache.clear();
         self.entry(id)?;
         let mut next = self.manifest.clone();
         next.entries.retain(|e| e.id != id);
@@ -341,6 +344,7 @@ impl Library {
         Ok(session)
     }
     pub fn refresh(&mut self, id: &str) -> Result<Session, String> {
+        self.advanced_cache.clear();
         let entry = self.entry(id)?.clone();
         let path = Path::new(&entry.source);
         let digest = fingerprint(path)?;
@@ -452,5 +456,93 @@ impl Library {
         telemetry::analyze_with_boundaries(
             &session, primary, comparison, axis, channels, boundaries,
         )
+    }
+    pub fn validate_formulas(
+        &mut self,
+        id: &str,
+        formulas: &[telemetry::expressions::Formula],
+    ) -> Result<Vec<Value>, String> {
+        let session = self.current(id)?;
+        Ok(telemetry::expressions::evaluate(&session, formulas)?
+            .into_iter()
+            .map(|c| serde_json::json!({"id":c.id,"name":c.name,"unit":c.unit}))
+            .collect())
+    }
+    pub fn analyze_formulas(
+        &mut self,
+        id: &str,
+        primary: &str,
+        comparison: Option<&str>,
+        axis: &str,
+        channels: &[String],
+        formulas: &[telemetry::expressions::Formula],
+    ) -> Result<Analysis, String> {
+        let mut session = self.current(id)?;
+        session
+            .channels
+            .extend(telemetry::expressions::evaluate(&session, formulas)?);
+        let boundaries = self
+            .entry(id)?
+            .corners
+            .get(primary)
+            .filter(|c| c.version == 1)
+            .map(|c| c.boundaries.as_slice());
+        telemetry::analyze_with_boundaries(
+            &session, primary, comparison, axis, channels, boundaries,
+        )
+    }
+    pub fn analyze_advanced(
+        &mut self,
+        id: &str,
+        primary: &str,
+        comparison: Option<&str>,
+        axis: &str,
+        mut request: telemetry::advanced::AdvancedRequest,
+        formulas: &[telemetry::expressions::Formula],
+    ) -> Result<Value, String> {
+        // Validate original bytes even on a cache hit; a changed file cannot supply stale analysis.
+        let mut session = self.current(id)?;
+        request.axis = axis.into();
+        let boundaries = self
+            .entry(id)?
+            .corners
+            .get(primary)
+            .filter(|c| c.version == 1)
+            .map(|c| c.boundaries.clone());
+        let key = serde_json::to_string(&(
+            id,
+            &self.entry(id)?.content_version,
+            primary,
+            comparison,
+            axis,
+            &request,
+            formulas,
+            &boundaries,
+        ))
+        .map_err(|e| e.to_string())?;
+        if let Some(cached) = self.advanced_cache.get(&key) {
+            return Ok(cached.clone());
+        }
+        session
+            .channels
+            .extend(telemetry::expressions::evaluate(&session, formulas)?);
+        let analysis = telemetry::analyze_with_boundaries(
+            &session,
+            primary,
+            comparison,
+            axis,
+            &[],
+            boundaries.as_deref(),
+        )?;
+        let mut value =
+            serde_json::to_value(telemetry::advanced::analyze(&session, &analysis, &request)?)
+                .map_err(|e| e.to_string())?;
+        value["sourceContentVersion"] = Value::String(self.entry(id)?.content_version.clone());
+        value["parameterKey"] = Value::String(format!("{:x}", Sha256::digest(key.as_bytes())));
+        if self.advanced_cache.len() >= 8 {
+            self.advanced_cache.clear();
+        }
+        self.advanced_cache.insert(key, value.clone());
+        Ok(value)
     }
 }

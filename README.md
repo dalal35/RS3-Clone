@@ -25,6 +25,8 @@ npm test
 npm run build
 npm run test:plots # uses local real XRK fixtures and Chrome (or Playwright Chromium)
 npm run test:workflow # browser workflow checks with simulated IPC
+npm run test:advanced # real-XRK-backed advanced workflows and async races
+npm run test:canvas # histogram inspection and canvas rendering regressions
 cargo test --manifest-path src-tauri/Cargo.toml
 npm run tauri build
 ```
@@ -35,6 +37,14 @@ Telemetry belongs in ignored `data/`; it is never committed. Importing reads fil
 Reopening restores the active session, lap selections, channels, speed units, graph layout and compatible zoom. Missing files remain visible: use Locate to reconnect the same recording. Modified files require an explicit Refresh, which clears incompatible workspace state and corner edits. Removing a library entry never deletes its XRK file.
 
 Use Edit boundaries on the circuit trace to adjust the automatic section boundaries, then drag a handle or use its arrow keys. Overrides belong to the selected primary lap and are stored in reference-track meters. Reset to automatic restores the detected sections; recorded telemetry and GPS alignment remain unchanged.
+
+## Advanced analysis
+
+Open Advanced beside Telemetry for G-G traction, shift events, RPM recovery, scatter plots, distributions, custom channels and saved analysis presets. Tools share lap selections, track sections, graph ranges and point cursors. Histogram bins describe aggregate occupancy and do not move the track cursor. Each tool retains its own channels and axis settings.
+
+Choose accelerometer axes, signs and zero offsets before interpreting G-G plots. Logger calibration and mounting are not independently verified. Calculated gear and RPM-inferred shifts are labeled separately from measured gear changes. RPM recovery defaults to a configurable 8,200 RPM threshold; without throttle/gear evidence, low-RPM recoveries remain candidates.
+
+Formulas use channel IDs in brackets, unit-bearing constants such as `8200{rpm}`, and explicit conversions such as `convert([channel-id], "mph")`. The Rust evaluator validates units and dependencies, rejects cycles, and leaves invalid or unsupported results as gaps. Saved formulas also appear in ordinary telemetry channels. Manage presets to save, rename, delete or choose a default; existing Milestone 4 workspaces remain compatible.
 
 ## Design
 

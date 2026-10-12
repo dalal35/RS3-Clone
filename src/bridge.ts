@@ -20,9 +20,11 @@ export async function importFiles(): Promise<Session[]> {
   const selected = await open({ multiple: true, directory: false, filters: [{ name: 'AiM telemetry', extensions: ['xrk'] }] });
   return selected ? importPaths(Array.isArray(selected) ? selected : [selected]) : [];
 }
-export async function analyzeSession(sessionId: string, primaryId: string, comparisonId: string | null, axis: Axis, channelIds: string[]): Promise<Analysis> {
-  return invoke<Analysis>('analyze_session', { sessionId, primaryId, comparisonId, axis, channelIds });
+export async function analyzeSession(sessionId: string, primaryId: string, comparisonId: string | null, axis: Axis, channelIds: string[],formulas:import('./advancedState').Formula[]=[]): Promise<Analysis> {
+  return invoke<Analysis>('analyze_session', { sessionId, primaryId, comparisonId, axis, channelIds,formulas });
 }
+export const analyzeAdvanced=(sessionId:string,primaryId:string,comparisonId:string|null,axis:Axis,request:import('./advancedState').AdvancedConfig,formulas:import('./advancedState').Formula[])=>invoke<import('./types').AdvancedResult>('analyze_advanced',{sessionId,primaryId,comparisonId,axis,request,formulas});
+export const validateFormulas=(sessionId:string,formulas:import('./advancedState').Formula[])=>invoke<{id:string;name:string;unit:string}[]>('validate_formulas',{sessionId,formulas});
 export async function subscribeFileDrop(callback: (paths: string[]) => void): Promise<() => void> {
   if (!isNative) return () => {};
   return getCurrentWebview().onDragDropEvent(event => {

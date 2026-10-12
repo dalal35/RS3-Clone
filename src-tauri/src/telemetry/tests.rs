@@ -28,6 +28,7 @@ fn sample() -> Session {
         ],
         channels: vec![
             Channel {
+                gaps: vec![],
                 id: "gps-speed".into(),
                 name: "GPS Speed".into(),
                 unit: "m/s".into(),
@@ -35,6 +36,7 @@ fn sample() -> Session {
                 values: vec![10.; 21],
             },
             Channel {
+                gaps: vec![],
                 id: "rpm".into(),
                 name: "RPM".into(),
                 unit: "rpm".into(),
@@ -127,6 +129,7 @@ fn gps_speed_takes_priority_over_other_speed_channels() {
 fn invalid_gps_fix_disables_distance() {
     let mut s = sample();
     s.channels.push(Channel {
+        gaps: vec![],
         id: "gps-fix".into(),
         name: "GPS Fix".into(),
         unit: "".into(),
@@ -236,6 +239,7 @@ fn gps_session() -> Session {
         ("rpm", "RPM", "rpm", vec![5000.; times.len()]),
     ] {
         s.channels.push(Channel {
+            gaps: vec![],
             id: id.into(),
             name: name.into(),
             unit: unit.into(),
@@ -547,4 +551,39 @@ fn segment_channel_means_are_time_weighted_and_suppress_outages() {
         .segments
         .iter()
         .any(|seg| seg.primary.channels[0].mean.is_none()));
+}
+
+#[test]
+fn rejected_invalid_sample_retains_an_outage() {
+    let mut warnings = vec![];
+    let c = channel(
+        "bad".into(),
+        "Bad".into(),
+        "rpm".into(),
+        vec![0, 100, 200, 300, 400, 500],
+        vec![1., 1., f64::NAN, 1., 1., 1.],
+        &mut warnings,
+    );
+    assert!(
+        sample_without_gaps(&c, 0.2, &source_gaps(&c)).is_none(),
+        "invalid sample must not be interpolated away"
+    );
+}
+
+#[test]
+fn consecutive_invalid_samples_form_one_outage() {
+    let mut warnings = vec![];
+    let c = channel(
+        "bad".into(),
+        "Bad".into(),
+        "rpm".into(),
+        vec![0, 100, 200, 300, 400, 500],
+        vec![1., 1., f64::NAN, f64::NAN, 1., 1.],
+        &mut warnings,
+    );
+    assert_eq!(
+        c.gaps,
+        vec![[0.1, 0.4]],
+        "one outage per contiguous invalid run"
+    );
 }

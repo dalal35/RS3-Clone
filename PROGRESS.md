@@ -1,3 +1,30 @@
+# Milestone 5 — Advanced telemetry analysis · 2026-10-12
+
+Implemented the approved design from baseline `aba9534`, using Codex Orchestrator with at most two concurrent workers. Independent numerical and integrated reviews found regressions that were corrected with observed failing tests before acceptance. Final review recommends shipping.
+
+## Completed
+- All seven features: G-G traction, shift analysis, RPM recovery, scatter plots, distributions, restricted mathematical channels and saved analysis presets. Advanced remains a separate workspace beside the existing Telemetry view, retaining laps, comparisons, track sections, themes and synchronized plots/maps.
+- Rust owns calculations at original sensor timestamps, shared cadence/explicit-gap alignment, acceleration units/signs/offsets, discrete gear sampling, full-precision summaries, weighted histograms and event evidence. Known outages are never interpolated. Physical display mapping does not warp calculation time.
+- G-G axes are user-selectable with explicit orientation/calibration/gravity uncertainty. Shift evidence distinguishes measured, calculated and RPM-inferred changes, including conservative inferred downshift candidates; interruption and recovery windows never claim mechanical shift duration. Low-RPM recovery defaults to configurable 8,200 RPM and remains a candidate without supporting throttle/gear evidence.
+- Restricted expressions validate units, dependencies and circular references, bound input/work, and preserve invalid numerical results as gaps. Derived channels work in ordinary telemetry plots. No dynamic code execution or new dependency was added.
+- Five built-in presets plus custom save/duplicate/rename/delete/default/reset, independent formula persistence and per-tool channel/scale/range settings. The bounded advanced namespace preserves Milestone 4 workspace compatibility and protects unknown newer advanced state. Source-validated advanced cache is bounded to eight results.
+- Canvas zoom/pan/reset, point and histogram-bin inspection, panel resizing, common filters, sortable/excludable events, RPM context and event map markers. Aggregate histogram bins leave the shared point cursor unchanged. Async saves/session switches and event-tool plot rebuilds have regression coverage.
+
+## Verification
+- `npm test`: 25 tests pass. `cargo test --manifest-path src-tauri/Cargo.toml --offline`: 66 unit tests and 12 integration tests pass, plus doc tests. Synthetic cases cover units, outages, irregular cadence, invalid formulas, cycles, event noise/braking/throttle lifts, gear debounce, discrete values, exclusions, nullable recovery and tool isolation.
+- All four browser suites pass: `test:plots`, `test:workflow`, `test:advanced`, `test:canvas`. Advanced workflows use actual Rust output from a real XRK through simulated IPC; canvas fixtures target rendering/inspection. Tests cover shared cursors, filters, event exclusions, formulas, presets/restart, delayed validation races and finite cursor retention across event-tool changes.
+- `npm run build` and final `npm run tauri build` pass. Native Apple Silicon macOS bundle: 11.61 MiB. Exercised real sessions, duplicate native-picker import, all seven tools, event-map and scatter selections, derived mph channel in ordinary plots, log distribution/bin inspection, preset default/reset, keyboard panel resizing, both themes, and verified process exit/relaunch with saved formula, preset and lap comparison restored. Native retest confirms the final cursor-rebuild correction.
+- Both original XRKs are read by integration tests. Fastest-pair calculated-gear transition candidates: 0361 19/17, 0362 16/16. Default low-RPM recovery candidates: 0/0 in each. Final debug paired-lap detector calculations: shifts 39–43 ms, recovery 31–33 ms on this Mac; these are representative engine observations, not end-to-end latency guarantees.
+- Original fixture SHA-256 hashes remain unchanged (recorded below); both files remain ignored and untracked. No telemetry was uploaded or committed.
+
+## Limits / stopping point
+- The fixtures have calculated gear, no measured throttle/brake, and unverified accelerometer mounting/calibration. Candidate counts validate execution and invariants, not externally annotated mechanical events, confirmed bogging or tire grip. Sparse source data and GPS resolution limit conclusions.
+- Overlapping histogram bars favor primary-lap bin inspection. Default presets apply through explicit reset; reopening preserves the last used configuration. Large recording/library performance has not been broadly benchmarked. Existing memory-only parsed-cache and source-refresh limitations remain.
+- Existing upstream `binrw` future-Rust compatibility warning remains. The app is locally ad-hoc signed; distribution signing/notarization is outside scope.
+- Milestone 5 is the stopping point. AI Race Engineer development has not begun.
+
+---
+
 # Milestone 4: persistence and workflow polish — 2026-10-11
 
 Continued from `1b3d192`. Approved architecture recorded in `docs/superpowers/specs/2026-10-11-persistence-design.md`; implemented with Codex Orchestrator and at most two concurrent workers.

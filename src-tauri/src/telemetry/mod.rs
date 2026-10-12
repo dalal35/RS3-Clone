@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+pub mod advanced;
+pub mod expressions;
 mod spatial;
 pub use spatial::{Alignment, ChannelMean, MappingPoint, Segment, SegmentMetrics};
 use std::{
@@ -9,6 +11,8 @@ use std::{
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Channel {
+    #[serde(default)]
+    pub gaps: Vec<[f64; 2]>,
     pub id: String,
     pub name: String,
     pub unit: String,
@@ -96,6 +100,7 @@ fn channel(
     warnings: &mut Vec<String>,
 ) -> Channel {
     let mut c = Channel {
+        gaps: vec![],
         id,
         name,
         unit,
@@ -103,14 +108,30 @@ fn channel(
         values: vec![],
     };
     let mut rejected = 0;
+    let mut invalid_start = None;
+    let mut invalid_end = 0.;
     for (t, v) in times.into_iter().zip(values) {
         let t = t as f64 / 1000.;
         if !v.is_finite() || c.times.last().is_some_and(|last| t <= *last) {
+            if !v.is_finite() {
+                invalid_start.get_or_insert(c.times.last().copied().unwrap_or(t));
+                invalid_end = t;
+            }
             rejected += 1;
             continue;
         }
+        if let Some(left) = invalid_start.take() {
+            if t > left {
+                c.gaps.push([left, t]);
+            }
+        }
         c.times.push(t);
         c.values.push(v);
+    }
+    if let Some(left) = invalid_start {
+        if invalid_end > left {
+            c.gaps.push([left, invalid_end]);
+        }
     }
     if rejected > 0 {
         warnings.push(format!(
@@ -332,7 +353,7 @@ fn interpolate(t: &[f64], v: &[f64], x: f64) -> Option<f64> {
 // A median cadence needs several source intervals; sparse channels remain unclassified.
 fn source_gaps(c: &Channel) -> Vec<[f64; 2]> {
     if c.times.len() < 5 {
-        return vec![];
+        return c.gaps.clone();
     }
     let mut steps: Vec<f64> = c
         .times
@@ -345,11 +366,15 @@ fn source_gaps(c: &Channel) -> Vec<[f64; 2]> {
         return vec![];
     };
     let threshold = 5. * nominal;
-    c.times
-        .windows(2)
-        .filter(|w| w[1] - w[0] > threshold + 1e-9)
-        .map(|w| [w[0], w[1]])
-        .collect()
+    let mut gaps = c.gaps.clone();
+    gaps.extend(
+        c.times
+            .windows(2)
+            .filter(|w| w[1] - w[0] > threshold + 1e-9)
+            .map(|w| [w[0], w[1]])
+            .collect::<Vec<_>>(),
+    );
+    gaps
 }
 fn gap_overlaps(gap: &[f64; 2], lap: &Lap) -> bool {
     gap[0] < lap.end && gap[1] > lap.start
@@ -358,7 +383,7 @@ fn sample_without_gaps(c: &Channel, t: f64, gaps: &[[f64; 2]]) -> Option<f64> {
     if gaps.iter().any(|g| t > g[0] && t < g[1]) {
         None
     } else {
-        interpolate(&c.times, &c.values, t)
+        interpolate(&c.times, &c.values, t).filter(|v| v.is_finite())
     }
 }
 fn clipped(c: &Channel, lap: &Lap) -> (Vec<f64>, Vec<f64>) {
@@ -370,7 +395,7 @@ fn clipped(c: &Channel, lap: &Lap) -> (Vec<f64>, Vec<f64>) {
         v.push(y);
     }
     for (&x, &y) in c.times.iter().zip(&c.values) {
-        if x > lap.start && x < lap.end {
+        if x > lap.start && x < lap.end && y.is_finite() {
             t.push(x);
             v.push(y);
         }

@@ -102,16 +102,51 @@ async fn analyze_session(
     comparison_id: Option<String>,
     axis: String,
     channel_ids: Vec<String>,
+    formulas: Option<Vec<telemetry::expressions::Formula>>,
     state: State<'_, Store>,
 ) -> Result<Analysis, String> {
     task(state.inner(), move |library| {
-        library.analyze(
+        library.analyze_formulas(
             &session_id,
             &primary_id,
             comparison_id.as_deref(),
             &axis,
             &channel_ids,
+            &formulas.unwrap_or_default(),
         )
+    })
+    .await
+}
+#[tauri::command]
+async fn analyze_advanced(
+    session_id: String,
+    primary_id: String,
+    comparison_id: Option<String>,
+    axis: String,
+    request: telemetry::advanced::AdvancedRequest,
+    formulas: Vec<telemetry::expressions::Formula>,
+    state: State<'_, Store>,
+) -> Result<Value, String> {
+    task(state.inner(), move |library| {
+        library.analyze_advanced(
+            &session_id,
+            &primary_id,
+            comparison_id.as_deref(),
+            &axis,
+            request,
+            &formulas,
+        )
+    })
+    .await
+}
+#[tauri::command]
+async fn validate_formulas(
+    session_id: String,
+    formulas: Vec<telemetry::expressions::Formula>,
+    state: State<'_, Store>,
+) -> Result<Vec<Value>, String> {
+    task(state.inner(), move |library| {
+        library.validate_formulas(&session_id, &formulas)
     })
     .await
 }
@@ -131,6 +166,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             import_session,
             analyze_session,
+            analyze_advanced,
+            validate_formulas,
             library_snapshot,
             load_library_session,
             remove_library_session,

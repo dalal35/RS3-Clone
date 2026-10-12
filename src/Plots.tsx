@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import type { Workspace } from './workspace';
-import type { Analysis, Axis, Series, TrackSegment } from './types';
+import type { Analysis, Axis, Series, TrackSegment, AdvancedEvent } from './types';
 import { interpolate, mergeSeries } from './telemetry';
+const noEvents:AdvancedEvent[]=[];
 type Row={id:string;name:string;unit:string;primary:Series;comparison?:Series};
-export default function Plots({analysis,axis,onCursor,resetVersion,focus=null,layout='comfortable',initialZoom=null,onZoom}:{analysis:Analysis;axis:Axis;onCursor:(x:number|null)=>void;resetVersion:number;focus?:TrackSegment|null;layout?:Workspace['layout'];initialZoom?:{min:number;max:number}|null;onZoom?:(range:{min:number;max:number})=>void}){
+export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,events=noEvents,focus=null,layout='comfortable',initialZoom=null,onZoom}:{analysis:Analysis;axis:Axis;onCursor:(x:number|null)=>void;resetVersion:number;cursor?:number|null;events?:AdvancedEvent[];focus?:TrackSegment|null;layout?:Workspace['layout'];initialZoom?:{min:number;max:number}|null;onZoom?:(range:{min:number;max:number})=>void}){
+  const applyingCursor=useRef(false),sharedCursor=useRef(cursor);sharedCursor.current=cursor;
   const host=useRef<HTMLDivElement>(null),plots=useRef<uPlot[]>([]),callback=useRef(onCursor);callback.current=onCursor;
   const zoomCallback=useRef(onZoom);zoomCallback.current=onZoom;
   const previousReset=useRef(resetVersion),previousFocus=useRef<TrackSegment|null>(null);
@@ -21,9 +23,11 @@ export default function Plots({analysis,axis,onCursor,resetVersion,focus=null,la
     const height=layout==='compact'?128:178;
     plots.current=rows.map((row,i)=>{
       const pairs=[row.primary,...(row.comparison?[row.comparison]:[])];
-      const plot=new uPlot({width:Math.max(nodes[i].clientWidth,200),height,padding:[14,18,0,0],legend:{show:false},cursor:{sync:{key:'telemetry'},drag:{x:true,y:false,setScale:true},points:{size:5}},select:{show:true,left:0,top:0,width:0,height:0},scales:{x:{time:false}},axes:[{stroke:ink,grid:{show:false},ticks:{stroke:grid},size:32,values:(_u,ticks)=>ticks.map(n=>`${Math.round(n*10)/10}`)},{stroke:ink,grid:{stroke:grid,width:1},ticks:{stroke:grid},size:54,gap:10}],series:[{},...pairs.map((s,index)=>({label:s.name,stroke:index?amber:cyan,width:1.5,spanGaps:false}))],hooks:{setCursor:[u=>{
+      const plot=new uPlot({width:Math.max(nodes[i].clientWidth,200),height,padding:[14,18,0,0],legend:{show:false},cursor:{sync:{key:'telemetry'},drag:{x:true,y:false,setScale:true},points:{size:5}},select:{show:true,left:0,top:0,width:0,height:0},scales:{x:{time:false}},axes:[{stroke:ink,grid:{show:false},ticks:{stroke:grid},size:32,values:(_u,ticks)=>ticks.map(n=>`${Math.round(n*10)/10}`)},{stroke:ink,grid:{stroke:grid,width:1},ticks:{stroke:grid},size:54,gap:10}],series:[{},...pairs.map((s,index)=>({label:s.name,stroke:index?amber:cyan,width:1.5,spanGaps:false}))],hooks:{ready:[u=>{applyingCursor.current=true;try{const position=sharedCursor.current,left=position==null?-10:u.valToPos(position,'x');if(Number.isFinite(left))u.setCursor({left,top:30});}finally{applyingCursor.current=false;}}],draw:[u=>{if(!/rpm|engine.*(speed|revs)/i.test(row.name))return;for(const event of events){if(event.position==null)continue;const x=u.valToPos(event.position,'x',true);u.ctx.save();u.ctx.strokeStyle=event.lapId===analysis.primary.lapId?cyan:amber;u.ctx.fillStyle=u.ctx.strokeStyle;u.ctx.globalAlpha=.15;if(event.endPosition!=null&&event.endPosition>event.position)u.ctx.fillRect(x,u.bbox.top,u.valToPos(event.endPosition,'x',true)-x,u.bbox.height);u.ctx.globalAlpha=.8;u.ctx.beginPath();u.ctx.moveTo(x,u.bbox.top);u.ctx.lineTo(x,u.bbox.top+u.bbox.height);u.ctx.stroke();u.ctx.restore();}}],setCursor:[u=>{
         const x=u.cursor.left==null||u.cursor.left<0?null:u.posToVal(u.cursor.left,'x');
-        if(i===0)callback.current(x);
+        // uPlot can fire this hook while constructing/destroying a plot, before scales exist.
+        if(!initialized||(x!=null&&!Number.isFinite(x)))return;
+        if(i===0&&!applyingCursor.current)callback.current(x);
         const readout=readouts.current.get(row.id);
         if(readout)readout.textContent=pairs.map(s=>{const value=x==null?null:interpolate(s.x,s.values,x,s.gaps);return value==null?'—':value.toFixed(row.unit==='rpm'?0:1);}).join(' / ')+' '+row.unit;
       }],setScale:[u=>{if(initialized&&i===0&&u.scales.x.min!=null&&u.scales.x.max!=null)zoomCallback.current?.({min:u.scales.x.min,max:u.scales.x.max});if(u.scales.x.min!=null&&u.scales.x.max!=null)plots.current.forEach(other=>{if(other!==u&&(other.scales.x.min!==u.scales.x.min||other.scales.x.max!==u.scales.x.max))other.setScale('x',{min:u.scales.x.min!,max:u.scales.x.max!});});}]}},mergeSeries(pairs) as uPlot.AlignedData,nodes[i]);
@@ -38,9 +42,10 @@ export default function Plots({analysis,axis,onCursor,resetVersion,focus=null,la
     });
     if(initialZoom){const max=Math.max(...analysis.primary.series.map(s=>s.x.at(-1)??0),1);if(initialZoom.min>=0&&initialZoom.max<=max)plots.current.forEach(p=>p.setScale('x',initialZoom));}
     initialized=true;
-    return()=>{plots.current.forEach(p=>(p as uPlot&{dispose:()=>void}).dispose());plots.current=[];};
-  },[analysis,axis,layout]);
+    return()=>{initialized=false;plots.current.forEach(p=>(p as uPlot&{dispose:()=>void}).dispose());plots.current=[];};
+  },[analysis,axis,layout,events]);
   useEffect(()=>{if(previousReset.current===resetVersion)return;previousReset.current=resetVersion;plots.current.forEach(p=>p.setScale('x',{min:analysis.primary.series[0]?.x[0]??0,max:Math.max(...analysis.primary.series.map(s=>s.x[s.x.length-1]??0),analysis.delta?.x.at(-1)??0,1)}));},[resetVersion]);
   useEffect(()=>{if(previousFocus.current===focus)return;previousFocus.current=focus;if(focus&&focus.end>focus.start)plots.current.forEach(p=>{p.batch(()=>p.setScale('x',{min:focus.start,max:focus.end}));p.setCursor({left:p.valToPos((focus.start+focus.end)/2,'x'),top:30});});},[focus,analysis]);
+  useEffect(()=>{applyingCursor.current=true;try{plots.current.forEach(p=>p.setCursor({left:cursor==null?-10:p.valToPos(cursor,'x'),top:30}));}finally{applyingCursor.current=false;}},[cursor,analysis,axis,layout,events]);
   return <div ref={host} className="plots">{rows.map(row=><section className="plot-row" key={row.id}><div className="plot-label"><span>{row.name}</span><span className="mono readout" ref={el=>{if(el)readouts.current.set(row.id,el);}} >— {row.unit}</span></div><div data-plot /></section>)}<div className="axis-label">{axis==='distance'?analysis.alignment?.method==='spatial'?'Reference track position · meters':'Distance into lap · meters':analysis.alignment?.method==='spatial'?'Primary lap time at aligned position · seconds':'Time into lap · seconds'}</div></div>;
 }

@@ -41,11 +41,11 @@ try{
  await page.getByRole('button',{name:/Track two Test/}).click();await page.getByRole('heading',{name:'Track two'}).waitFor();await page.getByText('Saved on this Mac').waitFor();
  assert.equal(await page.getByRole('button',{name:'km/h',exact:true}).count(),1,'Another session uses its own units');
  await page.getByRole('button',{name:/Track one Test/}).click();await page.getByRole('heading',{name:'Track one'}).waitFor();await page.getByText('Saved on this Mac').waitFor();
- assert.equal(await page.getByRole('button',{name:'mph',exact:true}).count(),1,'Switching restores session units');assert.equal(await page.locator('.segmented button.active').innerText(),'Time','Switching restores axis');
- await page.reload();await page.getByRole('heading',{name:'Track one'}).waitFor();assert.equal(await page.getByRole('button',{name:'mph',exact:true}).count(),1,'Reload restores units');assert.equal(await page.locator('.segmented button.active').innerText(),'Time');assert.equal(await page.getByRole('button',{name:'Comfortable',exact:true}).count(),1,'Reload restores graph density');
+ assert.equal(await page.getByRole('button',{name:'mph',exact:true}).count(),1,'Switching restores session units');assert.equal(await page.locator('.segmented[aria-label="Horizontal axis"] button.active').innerText(),'Time','Switching restores axis');
+ await page.reload();await page.getByRole('heading',{name:'Track one'}).waitFor();assert.equal(await page.getByRole('button',{name:'mph',exact:true}).count(),1,'Reload restores units');assert.equal(await page.locator('.segmented[aria-label="Horizontal axis"] button.active').innerText(),'Time');assert.equal(await page.getByRole('button',{name:'Comfortable',exact:true}).count(),1,'Reload restores graph density');
  await page.locator('.library-entry').filter({hasText:'Track one'}).getByRole('button',{name:'Refresh',exact:true}).click();
  assert.equal(await page.locator('main').getAttribute('inert'),'','Workspace is frozen during explicit refresh');
- await page.waitForFunction(()=>!document.querySelector('main').inert&&document.querySelector('.segmented button.active')?.textContent==='Distance');
+ await page.waitForFunction(()=>!document.querySelector('main').inert&&document.querySelector('.segmented[aria-label="Horizontal axis"] button.active')?.textContent==='Distance');
  assert.equal(await page.getByRole('button',{name:'km/h',exact:true}).count(),1,'Changed source discards incompatible units/workspace');
  await page.locator('.library-entry').filter({hasText:'Track two'}).getByRole('button',{name:'Remove',exact:true}).click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('test-library')).entries.length===1);assert.equal(await page.locator('.library-entry').count(),1);
  assert.deepEqual(errors,[]);console.log('PASS: React IPC workflow — per-session switching, queued saves, workspace reload and safe library remove');

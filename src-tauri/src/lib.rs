@@ -1,5 +1,6 @@
 pub mod library;
 pub mod telemetry;
+pub mod video;
 
 use library::{Library, LibrarySnapshot};
 use serde_json::Value;
@@ -164,6 +165,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            video::authorize_local_video,
             import_session,
             analyze_session,
             analyze_advanced,

@@ -3,6 +3,16 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { Analysis, Axis, Session } from './types';
 export const isNative = isTauri();
+export interface LocalVideoInfo { path: string; size: number; modifiedMs: number; status: 'ready' | 'missing' }
+export async function pickLocalVideo(): Promise<LocalVideoInfo | null> {
+  if (!isNative) throw new Error('Open the native app to attach a local video.');
+  const selected = await open({ multiple: false, directory: false, filters: [{ name: 'Local video', extensions: ['mp4', 'mov'] }] });
+  return typeof selected === 'string' ? authorizeLocalVideo(selected) : null;
+}
+export async function authorizeLocalVideo(path: string): Promise<LocalVideoInfo> {
+  if (!isNative) throw new Error('Open the native app to attach a local video.');
+  return invoke<LocalVideoInfo>('authorize_local_video', { path });
+}
 export async function importPaths(paths: string[]): Promise<Session[]> {
   if (!isNative) throw new Error('Open the native macOS app to import XRK files.');
   const results: Session[] = [];

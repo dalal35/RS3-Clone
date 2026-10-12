@@ -1,6 +1,6 @@
 # Milestone 6: Video synchronization specification
 
-Status: architecture approved on 2026-10-12; written specification awaiting user review. Implementation has not started.
+Status: architecture and written specification formally approved by the user on 2026-10-12. Implementation awaits written-plan review.
 
 ## Purpose and scope
 

@@ -263,3 +263,71 @@ fn ignores_interrupted_temp_file_and_refuses_newer_manifest_written_while_runnin
         .contains("999"));
     fs::remove_dir_all(p).unwrap();
 }
+
+#[test]
+fn video_workspace_round_trips_atomically_with_advanced_state_and_version_guards() {
+    let p = sandbox("video-workspace");
+    let store = p.join("store");
+    let mut lib = Library::open(store.clone()).unwrap();
+    let session = lib.import(&fixture()).unwrap();
+    let version = lib.snapshot().unwrap().entries[0].content_version.clone();
+    // Existing workspaces without video remain readable.
+    let old = serde_json::json!({"axis":"time","advanced":{"version":1}});
+    lib.save_workspace_version(&session.id, old.clone(), &version)
+        .unwrap();
+    drop(lib);
+    let mut lib = Library::open(store.clone()).unwrap();
+    assert_eq!(
+        lib.snapshot().unwrap().entries[0].workspace.as_ref(),
+        Some(&old)
+    );
+    let segments = (0..100)
+        .map(|i| {
+            serde_json::json!({
+                "id":format!("segment-{i}"),"videoStart":i,"videoEnd":i+1,
+                "anchorVideoTime":i,"anchorTelemetryTime":i,"correctionSeconds":0
+            })
+        })
+        .collect::<Vec<_>>();
+    let workspace = serde_json::json!({
+        "contentVersion":version,"axis":"time","view":"video",
+        "advanced":{"version":1,"formulas":[],"presets":[]},
+        "video":{"version":1,"sessionId":session.id,"contentVersion":version,
+            "source":{"type":"local","path":"/local/track.mp4","size":123456,"modifiedMs":1234},
+            "segments":segments,"selectedSegmentId":"segment-0",
+            "preferences":{"panelHeight":400,"playbackRate":1,"pausedVideoTime":12}}
+    });
+    lib.save_workspace_version(&session.id, workspace.clone(), &version)
+        .unwrap();
+    assert!(!store.join("library.tmp").exists());
+    drop(lib);
+    let mut reopened = Library::open(store.clone()).unwrap();
+    assert_eq!(
+        reopened.snapshot().unwrap().entries[0].workspace.as_ref(),
+        Some(&workspace)
+    );
+    // Unknown future video fields are opaque to the manifest and survive ordinary saves.
+    let mut future = workspace.clone();
+    future["video"]["version"] = serde_json::json!(2);
+    future["video"]["opaque"] = serde_json::json!({"preserve":[1,"二",true]});
+    reopened
+        .save_workspace_version(&session.id, future.clone(), &version)
+        .unwrap();
+    assert!(reopened
+        .save_workspace_version(&session.id, workspace.clone(), "stale-version")
+        .is_err());
+    let mut oversized = workspace;
+    oversized["advanced"]["opaque"] = serde_json::json!("x".repeat(60000));
+    assert!(serde_json::to_vec(&oversized["video"]).unwrap().len() < 65536);
+    assert!(serde_json::to_vec(&oversized["advanced"]).unwrap().len() < 65536);
+    assert!(reopened
+        .save_workspace_version(&session.id, oversized, &version)
+        .is_err());
+    drop(reopened);
+    let mut reopened = Library::open(store).unwrap();
+    assert_eq!(
+        reopened.snapshot().unwrap().entries[0].workspace.as_ref(),
+        Some(&future)
+    );
+    fs::remove_dir_all(p).unwrap();
+}

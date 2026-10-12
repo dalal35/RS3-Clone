@@ -11,7 +11,8 @@
     "test:plots": "node scripts/verify-plots.mjs",
     "test:workflow": "node scripts/verify-workflow.mjs",
     "test:advanced": "node scripts/verify-advanced.mjs",
-    "test:canvas": "node scripts/verify-canvas.mjs"
+    "test:canvas": "node scripts/verify-canvas.mjs",
+    "test:video": "node scripts/verify-video.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

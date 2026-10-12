@@ -47,8 +47,19 @@ try {
  await page.getByRole('button',{name:'Reset',exact:true}).click();await page.waitForTimeout(100);
  assert.equal(await page.locator('.segment-card.selected').count(),0,'Reset clears focused comparison');
  assert.equal(await page.locator('.track-segment.selected').count(),0,'Reset clears focused map section');
+ await page.getByRole('button',{name:'Edit boundaries',exact:true}).click();
+ const handles=page.getByRole('slider');assert.equal(await handles.count(),await segments.count()-1,'Every shared interior boundary has an editable handle');
+ const handle=handles.first(),original=Number(await handle.getAttribute('aria-valuenow'));
+ await handle.focus();await page.keyboard.press('ArrowRight');
+ const edited=JSON.parse(await page.locator('[data-boundaries]').textContent());
+ assert(Math.abs(edited[0]-original-5)<1,'Arrow keys edit in reference-lap meters');
+ const hbox=await handle.boundingBox();await page.mouse.move(hbox.x+hbox.width/2,hbox.y+hbox.height/2);await page.mouse.down();await page.mouse.move(hbox.x+14,hbox.y+8,{steps:5});await page.mouse.up();
+ const dragged=JSON.parse(await page.locator('[data-boundaries]').textContent());assert(dragged.every((v,i)=>i===0||v>dragged[i-1]),'Dragged boundaries stay ordered');
+ await page.getByRole('button',{name:'Edit boundaries',exact:true}).click();assert.equal(await page.getByRole('slider').count(),0,'Done hides editing handles');
+ await page.mouse.move(box.x+box.width*.2,box.y+30);await page.mouse.down();await page.mouse.move(box.x+box.width*.6,box.y+30,{steps:8});await page.mouse.up();await page.waitForTimeout(50);
+ const saved=await ranges();await page.getByRole('button',{name:'Density',exact:true}).click();await page.waitForTimeout(50);const restored=await ranges();assert.equal(restored[0].min,saved[0].min,'Density changes preserve zoom');assert.equal(restored[0].max,saved[0].max,'Density changes preserve zoom end');
  assert.deepEqual(errors,[]);
- console.log(`PASS: real-XRK plots (${before.length} channels): synchronized zoom, pan, reset, cursor and track-section focus`);
+ console.log(`PASS: real-XRK plots (${before.length} channels): synchronized zoom, pan, reset, cursor, track-section focus, editable boundary drag/keyboard and layout zoom retention`);
 } finally {
  await browser?.close();await server?.close();unlinkSync('.tools/analysis.json');
 }

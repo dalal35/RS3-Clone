@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "tauri": "tauri",
-    "test:plots": "node scripts/verify-plots.mjs"
+    "test:plots": "node scripts/verify-plots.mjs",
+    "test:workflow": "node scripts/verify-workflow.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

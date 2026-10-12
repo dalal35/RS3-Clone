@@ -26,25 +26,25 @@
 ### Task 1: Rust library and corner override contract
 **Files:** src-tauri/src/library.rs (new), src-tauri/src/lib.rs, src-tauri/src/telemetry/{mod,spatial}.rs, Rust tests and examples.
 **Interfaces:** Tauri library_snapshot, load_library_session, remove_library_session, refresh_library_session, locate_library_session, save_workspace, set_corner_boundaries. Snapshot contains entries, activeSessionId, warnings; entries contain id/source/name/driver/track/recordedAt/lapCount/channelCount/status/workspace. Workspace is JSON; corner boundaries are number[] interior meters or null for automatic. Existing import_session returns Session; analyze_session retains existing arguments and applies stored overrides.
-- [ ] Write failing lifecycle/recovery and corner invariant tests, run and record failure.
-- [ ] Implement atomic manifest, SHA-256 identity, asynchronous commands and cached loading.
-- [ ] Implement validated meter overrides before guarded section metrics.
-- [ ] Run complete Rust suite, including temporary copies of both real fixtures.
+- [x] Write failing lifecycle/recovery and corner invariant tests, run and record failure.
+- [x] Implement atomic manifest, SHA-256 identity, asynchronous commands and cached loading.
+- [x] Implement validated meter overrides before guarded section metrics.
+- [x] Run complete Rust suite, including temporary copies of both real fixtures.
 
 ### Task 2: Frontend library and workspace
 **Files:** src/{App,Track,Plots,Segments}.tsx, src/{bridge,types,telemetry}.ts, styles, new workspace helpers/tests and browser interaction tests.
 **Interfaces:** Consume Task 1 commands; workspace stores primary/comparison/channel order/axis/units/layout/compatible zoom. Coordinate exact command shapes before implementation.
-- [ ] Write failing tests for workspace compatibility, unit conversion and boundary interactions.
-- [ ] Implement asynchronous restore, recent library/status/locate/refresh/remove controls and ordered save handling.
-- [ ] Implement plot zoom restore, units/layout and track handles/reset.
-- [ ] Run full frontend tests/build and real-XRK browser interactions.
+- [x] Write failing tests for workspace compatibility, unit conversion and boundary interactions.
+- [x] Implement asynchronous restore, recent library/status/locate/refresh/remove controls and ordered save handling.
+- [x] Implement plot zoom restore, units/layout and track handles/reset.
+- [x] Run full frontend tests/build and real-XRK browser interactions.
 
 ### Task 3: Integrate, verify, review and deliver
 **Files:** README.md, PROGRESS.md and bounded integration fixes.
-- [ ] Verify original hashes; run frontend/Rust/integration tests and native macOS build.
-- [ ] Actually launch, import, edit, quit and reopen native app; verify workspace/library/corner state and session switching.
-- [ ] Obtain independent read-only acceptance review; correct demonstrated blockers and rerun affected checks.
-- [ ] Update PROGRESS.md with observed evidence and limits; commit verified functionality, push origin and stop.
+- [x] Verify original hashes; run frontend/Rust/integration tests and native macOS build.
+- [x] Actually launch, import, edit, quit and reopen native app; verify workspace/library/corner state and session switching.
+- [x] Obtain independent read-only acceptance review; correct demonstrated blockers and rerun affected checks.
+- [x] Update PROGRESS.md with observed evidence and limits. Final commit/push follows verified acceptance and is recorded in git history.
 
 ## Rulings
 - Work in the clean existing checkout; no separate worktree needed for disjoint worker ownership.

@@ -167,3 +167,119 @@ fn real_gps_corruption_fails_conservatively_and_preserves_recorded_durations() {
         );
     }
 }
+
+#[test]
+fn manual_boundaries_recompute_guarded_partition_without_changing_alignment_or_delta() {
+    use apex_telemetry::telemetry::analyze_with_boundaries;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../data");
+    for name in [
+        "yash dalal_59_PURDUE GP IN_Warm-up_a_0361.xrk",
+        "yash dalal_59_PURDUE GP IN_Warm-up_a_0362.xrk",
+    ] {
+        let session = parse_session(&root.join(name)).unwrap();
+        let laps = session
+            .laps
+            .iter()
+            .filter(|l| l.complete)
+            .collect::<Vec<_>>();
+        let p = laps[0];
+        let c = laps[1];
+        let automatic = analyze(
+            &session,
+            &p.id,
+            Some(&c.id),
+            "distance",
+            &["gps-speed".into()],
+        )
+        .unwrap();
+        let mut boundaries = automatic
+            .segments
+            .iter()
+            .skip(1)
+            .map(|s| s.start_meters)
+            .collect::<Vec<_>>();
+        assert!(!boundaries.is_empty());
+        boundaries[0] += 1.;
+        let partial = session.laps.iter().find(|l| !l.complete).unwrap();
+        let fallback = analyze_with_boundaries(
+            &session,
+            &p.id,
+            Some(&partial.id),
+            "time",
+            &["gps-speed".into()],
+            Some(&boundaries),
+        )
+        .unwrap();
+        assert_ne!(fallback.alignment.method, "spatial");
+        assert!(!fallback.primary.series.is_empty());
+        assert!(fallback.segments.is_empty());
+        assert!(fallback
+            .warnings
+            .iter()
+            .any(|w| w.contains("Manual boundaries")));
+        let edited = analyze_with_boundaries(
+            &session,
+            &p.id,
+            Some(&c.id),
+            "distance",
+            &["gps-speed".into()],
+            Some(&boundaries),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&edited.alignment).unwrap(),
+            serde_json::to_value(&automatic.alignment).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&edited.delta).unwrap(),
+            serde_json::to_value(&automatic.delta).unwrap()
+        );
+        assert!((edited.segments[0].end_meters - boundaries[0]).abs() < 1e-8);
+        assert_eq!(
+            serde_json::to_value(&edited).unwrap()["cornerBoundaries"],
+            serde_json::json!(boundaries),
+            "native UI must receive saved override state"
+        );
+        assert!(
+            (edited
+                .segments
+                .iter()
+                .map(|s| s.primary.elapsed)
+                .sum::<f64>()
+                - p.duration)
+                .abs()
+                < 0.002
+        );
+        assert!(
+            (edited
+                .segments
+                .iter()
+                .map(|s| s.delta_seconds.unwrap())
+                .sum::<f64>()
+                - (p.duration - c.duration))
+                .abs()
+                < 0.002
+        );
+        let timed =
+            analyze_with_boundaries(&session, &p.id, Some(&c.id), "time", &[], Some(&boundaries))
+                .unwrap();
+        assert_eq!(timed.segments[0].end_meters, edited.segments[0].end_meters);
+        assert!(timed.segments[0].end < timed.segments[0].end_meters);
+        for invalid in [
+            vec![],
+            vec![f64::NAN],
+            vec![0.; boundaries.len()],
+            vec![1e9; boundaries.len()],
+        ] {
+            assert!(analyze_with_boundaries(
+                &session,
+                &p.id,
+                Some(&c.id),
+                "distance",
+                &[],
+                Some(&invalid)
+            )
+            .is_err());
+        }
+    }
+}

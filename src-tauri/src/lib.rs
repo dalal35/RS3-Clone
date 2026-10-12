@@ -1,43 +1,144 @@
+pub mod library;
 pub mod telemetry;
 
-use std::{collections::HashMap, path::PathBuf, sync::{Arc, Mutex}};
-use tauri::State;
+use library::{Library, LibrarySnapshot};
+use serde_json::Value;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+use tauri::{Manager, State};
 use telemetry::{Analysis, Session};
-type Sessions = Arc<Mutex<HashMap<String, Session>>>;
+type Store = Arc<Mutex<Result<Library, String>>>;
 
-#[tauri::command]
-async fn import_session(path: String, state: State<'_, Sessions>) -> Result<Session, String> {
-    let sessions = state.inner().clone();
+// Parsing, hashing, analysis and disk writes never run on the WebView/UI thread.
+// One serialized owner keeps manifest generations and workspace mutations ordered.
+async fn task<T: Send + 'static>(
+    store: &Store,
+    operation: impl FnOnce(&mut Library) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let store = store.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let path = PathBuf::from(path);
-        if !path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("xrk")) {
-            return Err("Choose an AiM .xrk telemetry file.".into());
-        }
-        let metadata = std::fs::metadata(&path).map_err(|e| format!("Cannot open telemetry: {e}"))?;
-        if !metadata.is_file() || metadata.len() > 512 * 1024 * 1024 {
-            return Err("Choose a regular XRK file smaller than 512 MiB.".into());
-        }
-        let session = telemetry::parse_session(&path)?;
-        sessions.lock().map_err(|_| "Session storage unavailable")?.insert(session.id.clone(), session.clone());
-        Ok(session)
-    }).await.map_err(|e| format!("Import failed: {e}"))?
+        let mut guard = store
+            .lock()
+            .map_err(|_| "Local library storage unavailable")?;
+        let library = guard.as_mut().map_err(|e| e.clone())?;
+        operation(library)
+    })
+    .await
+    .map_err(|e| format!("Local library operation failed: {e}"))?
 }
-
 #[tauri::command]
-async fn analyze_session(session_id: String, primary_id: String, comparison_id: Option<String>, axis: String, channel_ids: Vec<String>, state: State<'_, Sessions>) -> Result<Analysis, String> {
-    let sessions = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let storage = sessions.lock().map_err(|_| "Session storage unavailable")?;
-        let session = storage.get(&session_id).ok_or("Import this session again; it is no longer available.")?;
-        telemetry::analyze(session, &primary_id, comparison_id.as_deref(), &axis, &channel_ids)
-    }).await.map_err(|e| format!("Analysis failed: {e}"))?
+async fn library_snapshot(state: State<'_, Store>) -> Result<LibrarySnapshot, String> {
+    task(state.inner(), |library| library.snapshot()).await
 }
-
+#[tauri::command]
+async fn import_session(path: String, state: State<'_, Store>) -> Result<Session, String> {
+    task(state.inner(), move |library| {
+        library.import(&PathBuf::from(path))
+    })
+    .await
+}
+#[tauri::command]
+async fn load_library_session(
+    session_id: String,
+    state: State<'_, Store>,
+) -> Result<Session, String> {
+    task(state.inner(), move |library| library.load(&session_id)).await
+}
+#[tauri::command]
+async fn remove_library_session(
+    session_id: String,
+    state: State<'_, Store>,
+) -> Result<LibrarySnapshot, String> {
+    task(state.inner(), move |library| library.remove(&session_id)).await
+}
+#[tauri::command]
+async fn refresh_library_session(
+    session_id: String,
+    state: State<'_, Store>,
+) -> Result<Session, String> {
+    task(state.inner(), move |library| library.refresh(&session_id)).await
+}
+#[tauri::command]
+async fn locate_library_session(
+    session_id: String,
+    path: String,
+    state: State<'_, Store>,
+) -> Result<Session, String> {
+    task(state.inner(), move |library| {
+        library.locate(&session_id, &PathBuf::from(path))
+    })
+    .await
+}
+#[tauri::command]
+async fn save_workspace(
+    session_id: String,
+    workspace: Value,
+    expected_content_version: String,
+    state: State<'_, Store>,
+) -> Result<(), String> {
+    task(state.inner(), move |library| {
+        library.save_workspace_version(&session_id, workspace, &expected_content_version)
+    })
+    .await
+}
+#[tauri::command]
+async fn set_corner_boundaries(
+    session_id: String,
+    primary_id: String,
+    boundaries: Option<Vec<f64>>,
+    state: State<'_, Store>,
+) -> Result<(), String> {
+    task(state.inner(), move |library| {
+        library.set_corner_boundaries(&session_id, &primary_id, boundaries)
+    })
+    .await
+}
+#[tauri::command]
+async fn analyze_session(
+    session_id: String,
+    primary_id: String,
+    comparison_id: Option<String>,
+    axis: String,
+    channel_ids: Vec<String>,
+    state: State<'_, Store>,
+) -> Result<Analysis, String> {
+    task(state.inner(), move |library| {
+        library.analyze(
+            &session_id,
+            &primary_id,
+            comparison_id.as_deref(),
+            &axis,
+            &channel_ids,
+        )
+    })
+    .await
+}
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(Sessions::default())
-        .invoke_handler(tauri::generate_handler![import_session, analyze_session])
+        .setup(|app| {
+            let library = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Cannot locate local library folder: {e}"))
+                .and_then(Library::open);
+            // A damaged/unsupported library stays read-only and is reported to the UI.
+            app.manage(Arc::new(Mutex::new(library)) as Store);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            import_session,
+            analyze_session,
+            library_snapshot,
+            load_library_session,
+            remove_library_session,
+            refresh_library_session,
+            locate_library_session,
+            save_workspace,
+            set_corner_boundaries
+        ])
         .run(tauri::generate_context!())
         .expect("Could not launch Apex Telemetry");
 }

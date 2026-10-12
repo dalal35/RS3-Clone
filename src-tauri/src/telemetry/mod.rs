@@ -77,6 +77,8 @@ pub struct Delta {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct Analysis {
+    #[serde(rename = "cornerBoundaries")]
+    pub corner_boundaries: Option<Vec<f64>>,
     pub alignment: Alignment,
     pub segments: Vec<Segment>,
     pub primary: LapView,
@@ -615,6 +617,17 @@ pub fn analyze(
     axis: &str,
     channel_ids: &[String],
 ) -> Result<Analysis, String> {
+    analyze_with_boundaries(s, primary_id, comparison_id, axis, channel_ids, None)
+}
+
+pub fn analyze_with_boundaries(
+    s: &Session,
+    primary_id: &str,
+    comparison_id: Option<&str>,
+    axis: &str,
+    channel_ids: &[String],
+    boundaries: Option<&[f64]>,
+) -> Result<Analysis, String> {
     if !matches!(axis, "distance" | "time") {
         return Err("Choose time or distance for the horizontal axis.".into());
     }
@@ -699,9 +712,18 @@ pub fn analyze(
     } else {
         None
     };
+    if boundaries.is_some() && geometry.is_none() {
+        if c.is_none() {
+            return Err(
+                "Manual boundaries require validated GPS geometry for the reference lap.".into(),
+            );
+        }
+        warnings.push("Manual boundaries are saved but temporarily omitted: this comparison does not support validated spatial sections. Choose a compatible complete lap to use them.".into());
+    }
     let segments = geometry
         .as_ref()
-        .map(|g| g.segments(s, p, c, axis, channel_ids))
+        .map(|g| g.segments(s, p, c, axis, channel_ids, boundaries))
+        .transpose()?
         .unwrap_or_default();
     warnings.extend(alignment.notes.clone());
     let reference_time = geometry.as_ref().map(|g| &g.primary);
@@ -714,6 +736,7 @@ pub fn analyze(
         }
     }
     Ok(Analysis {
+        corner_boundaries: boundaries.map(|b| b.to_vec()),
         primary,
         comparison,
         delta,

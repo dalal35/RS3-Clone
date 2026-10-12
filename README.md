@@ -24,12 +24,17 @@ npm run tauri dev
 npm test
 npm run build
 npm run test:plots # uses local real XRK fixtures and Chrome (or Playwright Chromium)
+npm run test:workflow # browser workflow checks with simulated IPC
 cargo test --manifest-path src-tauri/Cargo.toml
 npm run tauri build
 ```
 
 The native application bundle is generated under `src-tauri/target/release/bundle/macos/`.
-Telemetry belongs in ignored `data/`; it is never committed. Importing reads files locally without changing them. Sessions remain in memory for the current app launch.
+Telemetry belongs in ignored `data/`; it is never committed. Importing reads files locally without changing them. The session library stores references and workspace preferences on this Mac, with atomic saves and a recoverable backup; parsed samples are cached in memory rather than duplicated on disk.
+
+Reopening restores the active session, lap selections, channels, speed units, graph layout and compatible zoom. Missing files remain visible: use Locate to reconnect the same recording. Modified files require an explicit Refresh, which clears incompatible workspace state and corner edits. Removing a library entry never deletes its XRK file.
+
+Use Edit boundaries on the circuit trace to adjust the automatic section boundaries, then drag a handle or use its arrow keys. Overrides belong to the selected primary lap and are stored in reference-track meters. Reset to automatic restores the detected sections; recorded telemetry and GPS alignment remain unchanged.
 
 ## Design
 

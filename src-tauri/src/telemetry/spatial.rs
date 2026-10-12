@@ -510,7 +510,8 @@ impl Geometry {
         c: Option<&Lap>,
         axis: &str,
         ids: &[String],
-    ) -> Vec<Segment> {
+        boundaries: Option<&[f64]>,
+    ) -> Result<Vec<Segment>, String> {
         let length = *self.primary.meters.last().unwrap();
         // Uniform geometric sampling avoids cadence/speed-dependent curvature.
         let n = (length / 2.).ceil().max(50.) as usize;
@@ -632,9 +633,25 @@ impl Geometry {
         if let Some(last) = merged.last_mut() {
             last.1 = length;
         }
+        if let Some(boundaries) = boundaries {
+            if boundaries.len() != merged.len().saturating_sub(1) {
+                return Err("Manual boundary count no longer matches automatic sections. Reset to automatic.".into());
+            }
+            let mut previous = 0.;
+            for &boundary in boundaries.iter().chain(std::iter::once(&length)) {
+                if !boundary.is_finite() || boundary - previous < 2. {
+                    return Err("Keep boundaries ordered, at least 2 meters apart, inside the reference lap.".into());
+                }
+                previous = boundary;
+            }
+            for (i, section) in merged.iter_mut().enumerate() {
+                section.0 = if i == 0 { 0. } else { boundaries[i - 1] };
+                section.1 = boundaries.get(i).copied().unwrap_or(length);
+            }
+        }
         let mut turns = 0;
         let mut straights = 0;
-        merged
+        Ok(merged
             .into_iter()
             .enumerate()
             .filter_map(|(i, (a, b, turn))| {
@@ -674,7 +691,7 @@ impl Geometry {
                     delta_seconds,
                 })
             })
-            .collect()
+            .collect())
     }
 }
 // GPS speed readouts cannot be trusted across invalid fixes or implausible

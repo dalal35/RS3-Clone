@@ -4,9 +4,9 @@ import type { PlayerSnapshot, VideoPlayer } from './player';
 import type { VideoSegment } from './model';
 
 const segment: VideoSegment = { id: 'one', videoStart: 0, videoEnd: 30, anchorVideoTime: 0, anchorTelemetryTime: 100, correctionSeconds: 0 };
-function fixture() {
+function fixture(initial: Partial<PlayerSnapshot> = {}) {
   let now = 0;
-  let sample: PlayerSnapshot = { time: 5, duration: 60, rate: 2, state: 'playing', seeking: false, observedAtMs: 0 };
+  let sample: PlayerSnapshot = { time: 5, duration: 60, rate: 2, state: 'playing', seeking: false, observedAtMs: 0, ...initial };
   let listener: ((value: PlayerSnapshot) => void) | undefined;
   const requests: { time: number; signal: AbortSignal; resolve: () => void; reject: (error: Error) => void }[] = [];
   const player: VideoPlayer = {
@@ -121,6 +121,46 @@ describe('source clock controller', () => {
       expect(f.onError).toHaveBeenCalledWith(expect.stringMatching(/timed out/i)); f.controller.dispose();
       expect(vi.getTimerCount()).toBe(0);
     } finally { vi.useRealTimers(); }
+  });
+
+  it('late play completion after a seek timeout is paused again and cannot restore mapped ownership', async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fixture(); let playing = true; let finishPlay: () => void;
+      vi.mocked(f.player.pause).mockImplementation(async () => { playing = false; });
+      vi.mocked(f.player.play).mockImplementation(() => new Promise<void>(resolve => {
+        finishPlay = () => { playing = true; f.observe({ time: 10, state: 'playing' }); resolve(); };
+      }));
+      const seek = f.controller.seekVideo(10); await flush(); f.requests[0].resolve(); await flush();
+      expect(f.player.play).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(5000); expect(await seek).toEqual({ kind: 'unavailable' });
+      expect(playing).toBe(false); expect(f.onTime).toHaveBeenLastCalledWith({ kind: 'unavailable' });
+      f.observe({ time: 10, state: 'paused' });
+      finishPlay!(); await flush(); expect(playing).toBe(false);
+      f.observe({ time: 10, state: 'paused' }); f.now(50); f.controller.tick();
+      expect(f.onTime).toHaveBeenLastCalledWith({ kind: 'unavailable' });
+      f.controller.dispose(); expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('a superseded late play cannot pause a newer generation that intentionally resumed', async () => {
+    const f = fixture(); let playing = true; let finishOldPlay: () => void;
+    vi.mocked(f.player.pause).mockImplementation(async () => { playing = false; });
+    vi.mocked(f.player.play).mockImplementationOnce(() => new Promise<void>(resolve => {
+      finishOldPlay = () => { playing = true; resolve(); };
+    })).mockImplementation(async () => { playing = true; });
+    const first = f.controller.seekVideo(10); await flush(); f.requests[0].resolve(); await flush();
+    const second = f.controller.seekVideo(20); await flush(); f.requests[1].resolve();
+    expect(await second).toEqual({ kind: 'mapped', segmentId: 'one', time: 120 });
+    expect(await first).toEqual({ kind: 'unavailable' }); expect(playing).toBe(true);
+    finishOldPlay!(); await flush(); expect(playing).toBe(true);
+    expect(f.onTime).toHaveBeenLastCalledWith({ kind: 'mapped', segmentId: 'one', time: 120 }); f.controller.dispose();
+  });
+
+  it('forwards an already failed initial snapshot with its source details', () => {
+    const f = fixture({ state: 'error', error: 'YouTube client identity rejected (153).' });
+    expect(f.onError).toHaveBeenCalledExactlyOnceWith('YouTube client identity rejected (153).');
+    f.controller.tick(); expect(f.onTime).toHaveBeenLastCalledWith({ kind: 'unavailable' }); f.controller.dispose();
   });
 
   it('uses source error details after readiness and clears synchronized positions for error/loading clocks', () => {

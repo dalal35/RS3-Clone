@@ -20,12 +20,16 @@ export function createSyncController(player: VideoPlayer, options: ControllerOpt
   let heldResult: MappingResult | null = null;
   let pausedAfterHold = false;
   let observationFloor = -Infinity;
+  let desiredPlaying = sample.state === 'playing';
+  let resumesInFlight = 0;
+  if (sample.state === 'error') options.onError(sample.error ?? 'Video playback failed. Check the source player for details.');
   const unsubscribe = player.subscribe((next: PlayerSnapshot) => {
     if (disposed || next.observedAtMs < sample.observedAtMs || next.observedAtMs < observationFloor) return;
     if (next.state === 'error') options.onError(next.error ?? 'Video playback failed. Check the source player for details.');
     if (pending) { if (next.state === 'paused') pending.pausedObserved = true; return; }
     if (heldResult && next.state === 'paused') pausedAfterHold = true;
-    if (heldResult && pausedAfterHold && next.state === 'playing' && sample.state !== 'playing') heldResult = null;
+    if (heldResult && resumesInFlight === 0 && pausedAfterHold && next.state === 'playing' && sample.state !== 'playing') heldResult = null;
+    if (!heldResult) desiredPlaying = next.state === 'playing';
     sample = { ...next }; predict = visible;
   });
   const runSeek = async (lookup: MappingResult, telemetry: MappingResult): Promise<MappingResult> => {
@@ -35,8 +39,9 @@ export function createSyncController(player: VideoPlayer, options: ControllerOpt
     pending?.abort.abort();
     const abort = new AbortController();
     pending = { abort, resume, pausedObserved: sample.state === 'paused' };
+    desiredPlaying = false;
     const hold = (result: MappingResult) => {
-      heldResult = result; pausedAfterHold = pending?.pausedObserved ?? false;
+      heldResult = result; desiredPlaying = false; pausedAfterHold = pending?.pausedObserved ?? false;
       sample = { ...sample, state: 'paused', seeking: false }; predict = false;
       options.onTime(result);
     };
@@ -62,8 +67,12 @@ export function createSyncController(player: VideoPlayer, options: ControllerOpt
         predict = false; heldResult = null;
         options.onTime(telemetry);
         if (resume) {
-          await player.play();
-          if (!current()) await player.pause();
+          desiredPlaying = true; resumesInFlight++;
+          try {
+            await player.play();
+            // A cancelled play may settle after its timeout, or after another seek owns playback.
+            if ((!current() || abort.signal.aborted) && !desiredPlaying) await player.pause();
+          } finally { resumesInFlight--; }
         }
       };
       await Promise.race([operation(), cancelled]);
@@ -104,6 +113,6 @@ export function createSyncController(player: VideoPlayer, options: ControllerOpt
       const lookup = telemetry.kind === 'mapped' ? { ...telemetry, time } : telemetry;
       return runSeek(lookup, telemetry);
     },
-    dispose() { if (disposed) return; disposed = true; generation++; pending?.abort.abort(); pending = undefined; unsubscribe(); },
+    dispose() { if (disposed) return; disposed = true; desiredPlaying = false; generation++; pending?.abort.abort(); pending = undefined; unsubscribe(); },
   };
 }

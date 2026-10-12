@@ -22,3 +22,11 @@ Typecheck: `npx tsc --noEmit` — passed.
 ## Limits
 
 Seek tolerances validate observed clocks, not frame-accurate rendering. Parent independently verified official YouTube development playback but packaged native playback reports 153/client identity; this implementation surfaces that actionable failure without a workaround. Native compatibility and application UI integration remain parent-owned.
+
+## Review follow-up
+
+Addressed the review of `2235a00` in a controller-only follow-up. Three new deterministic regressions first failed: a play promise settling after the five-second timeout restarted playback; an older superseded play completion paused a newer successful resume; and an initial already-failed snapshot did not forward its detailed error.
+
+The controller now tracks the latest desired playback ownership and in-flight resume promises. A cancelled late play compensates with a pause only when the latest owner wants paused, so a newer intentional resume remains playing. In-flight cancelled playback observations cannot release the unavailable latch. Controller construction forwards an initial error detail once.
+
+Verification: targeted playback suite 42 tests passed; full `npm test` 153 tests passed across 9 files; `npx tsc --noEmit` and `git diff --check` passed. No concurrent failures observed.

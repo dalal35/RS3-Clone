@@ -7,6 +7,7 @@ export interface PlayerSnapshot {
   state: PlaybackState;
   observedAtMs: number;
   seeking: boolean;
+  error?: string;
 }
 
 export interface VideoPlayer {

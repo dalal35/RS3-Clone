@@ -1,0 +1,109 @@
+import { telemetryToVideo, videoToTelemetry, type MappingResult, type VideoSegment } from './model';
+import type { PlayerSnapshot, VideoPlayer } from './player';
+
+interface ControllerOptions {
+  nowMs: () => number;
+  segments: () => VideoSegment[];
+  onTime: (result: MappingResult) => void;
+  onError: (message: string) => void;
+}
+
+/** Observations drive telemetry; ticks never seek the source. */
+export function createSyncController(player: VideoPlayer, options: ControllerOptions) {
+  let sample = player.snapshot();
+  let disposed = false;
+  let visible = true;
+  let predict = true;
+  let generation = 0;
+  let lastTick = -Infinity;
+  let pending: { abort: AbortController; resume: boolean; pausedObserved: boolean } | undefined;
+  let heldResult: MappingResult | null = null;
+  let pausedAfterHold = false;
+  let observationFloor = -Infinity;
+  const unsubscribe = player.subscribe((next: PlayerSnapshot) => {
+    if (disposed || next.observedAtMs < sample.observedAtMs || next.observedAtMs < observationFloor) return;
+    if (next.state === 'error') options.onError(next.error ?? 'Video playback failed. Check the source player for details.');
+    if (pending) { if (next.state === 'paused') pending.pausedObserved = true; return; }
+    if (heldResult && next.state === 'paused') pausedAfterHold = true;
+    if (heldResult && pausedAfterHold && next.state === 'playing' && sample.state !== 'playing') heldResult = null;
+    sample = { ...next }; predict = visible;
+  });
+  const runSeek = async (lookup: MappingResult, telemetry: MappingResult): Promise<MappingResult> => {
+    if (disposed) return { kind: 'unavailable' };
+    const resume = pending?.resume ?? sample.state === 'playing';
+    const request = ++generation;
+    pending?.abort.abort();
+    const abort = new AbortController();
+    pending = { abort, resume, pausedObserved: sample.state === 'paused' };
+    const hold = (result: MappingResult) => {
+      heldResult = result; pausedAfterHold = pending?.pausedObserved ?? false;
+      sample = { ...sample, state: 'paused', seeking: false }; predict = false;
+      options.onTime(result);
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancel: (() => void) | undefined;
+    const current = () => !disposed && generation === request;
+    try {
+      const cancelled = new Promise<never>((_resolve, reject) => {
+        cancel = () => reject(new DOMException('Video seek cancelled.', 'AbortError'));
+        abort.signal.addEventListener('abort', cancel, { once: true });
+      });
+      // Race the whole operation so even a stalled readiness/pause can be cancelled.
+      timer = setTimeout(() => abort.abort(new Error('Video seek timed out.')), 5000);
+      const operation = async () => {
+        await player.pause();
+        if (!current() || abort.signal.aborted) return;
+        if (lookup.kind !== 'mapped') { hold(lookup); return; }
+        await player.seek(lookup.time, abort.signal);
+        if (!current() || abort.signal.aborted) return;
+        // Keep the verified target until a post-completion source sample arrives.
+        observationFloor = options.nowMs();
+        sample = { ...player.snapshot(), time: lookup.time, state: 'paused', seeking: false, observedAtMs: observationFloor };
+        predict = false; heldResult = null;
+        options.onTime(telemetry);
+        if (resume) {
+          await player.play();
+          if (!current()) await player.pause();
+        }
+      };
+      await Promise.race([operation(), cancelled]);
+      return current() ? telemetry : { kind: 'unavailable' };
+    } catch (error) {
+      if (current()) {
+        const reason = abort.signal.reason;
+        if (reason instanceof Error && reason.name !== 'AbortError') options.onError(reason.message);
+        else if (!(error instanceof Error && error.name === 'AbortError')) options.onError(error instanceof Error ? error.message : String(error));
+        hold({ kind: 'unavailable' });
+        void player.pause().catch(() => {});
+      }
+      return { kind: 'unavailable' };
+    } finally {
+      clearTimeout(timer);
+      if (cancel) abort.signal.removeEventListener('abort', cancel);
+      if (current()) pending = undefined;
+    }
+  };
+  return {
+    tick() {
+      const now = options.nowMs();
+      if (disposed || !visible || pending || sample.seeking || now - lastTick < 50) return;
+      lastTick = now;
+      const elapsed = predict && sample.state === 'playing' ? Math.max(0, Math.min(100, now - sample.observedAtMs)) : 0;
+      options.onTime(heldResult ?? (sample.state === 'error' || sample.state === 'loading'
+        ? { kind: 'unavailable' }
+        : videoToTelemetry(options.segments(), sample.time + elapsed * sample.rate / 1000)));
+    },
+    setVisible(value: boolean) { visible = value; predict = false; lastTick = -Infinity; },
+    seekTelemetry(time: number, segmentId?: string) {
+      const lookup = telemetryToVideo(options.segments(), time, segmentId);
+      const telemetry: MappingResult = lookup.kind === 'mapped' ? { ...lookup, time } : lookup;
+      return runSeek(lookup, telemetry);
+    },
+    seekVideo(time: number) {
+      const telemetry = videoToTelemetry(options.segments(), time);
+      const lookup = telemetry.kind === 'mapped' ? { ...telemetry, time } : telemetry;
+      return runSeek(lookup, telemetry);
+    },
+    dispose() { if (disposed) return; disposed = true; generation++; pending?.abort.abort(); pending = undefined; unsubscribe(); },
+  };
+}

@@ -37,3 +37,87 @@ describe('native local video picker bridge', () => {
     await expect(authorizeLocalVideo('/tmp/unreadable.mp4')).rejects.toBe('Unreadable local video');
   });
 });
+
+import { afterEach } from 'vitest';
+import { createHtmlPlayer } from './htmlPlayer';
+
+class MediaStub extends EventTarget {
+  src = ''; currentTime = 0; duration = 60; readyState = 0; paused = true; ended = false; seeking = false;
+  playbackRate = 1; error: { code: number; message: string } | null = null;
+  play = vi.fn(async () => { this.paused = false; });
+  pause = vi.fn(() => { this.paused = true; });
+  load = vi.fn();
+  removeAttribute(name: string) { if (name === 'src') this.src = ''; }
+  asElement() { return this as unknown as HTMLVideoElement; }
+}
+
+describe('HTML video asynchronous adapter', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+  function setup() {
+    const element = new MediaStub(); const player = createHtmlPlayer(element.asElement(), 'asset://video.mp4');
+    element.readyState = 1; element.dispatchEvent(new Event('loadedmetadata'));
+    return { element, player };
+  }
+
+  it('waits for seeked with target tolerance and resolves same-time seeks without an event', async () => {
+    const { element, player } = setup(); await player.ready;
+    const abort = new AbortController(); let finished = false;
+    const seek = player.seek(10, abort.signal).then(() => { finished = true; });
+    await Promise.resolve(); expect(element.currentTime).toBe(10); expect(finished).toBe(false);
+    element.currentTime = 9; element.dispatchEvent(new Event('seeked')); await Promise.resolve(); expect(finished).toBe(false);
+    element.currentTime = 10.04; element.dispatchEvent(new Event('seeked')); await seek;
+    await player.seek(10.04, abort.signal); expect(player.snapshot().seeking).toBe(false); player.dispose();
+  });
+
+  it('rejects codec errors before and after readiness and notifies subscribers', async () => {
+    const { element, player } = setup(); await player.ready;
+    const listener = vi.fn(); player.subscribe(listener);
+    element.error = { code: 4, message: 'decoder unavailable' }; element.dispatchEvent(new Event('error'));
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({ state: 'error', error: expect.stringMatching(/decoder unavailable/) }));
+    await expect(player.play()).rejects.toThrow(/codec|format|decoder/i); player.dispose();
+    const bad = new MediaStub(); const pending = createHtmlPlayer(bad.asElement(), 'asset://bad.mov');
+    const rejected = expect(pending.ready).rejects.toThrow(/codec|format|decoder/i);
+    bad.error = { code: 4, message: '' }; bad.dispatchEvent(new Event('error')); await rejected; pending.dispose();
+  });
+
+  it('rejected play is recoverable through native controls and validates supported rates', async () => {
+    const { element, player } = setup(); await player.ready;
+    element.play.mockRejectedValueOnce(new Error('gesture required'));
+    await expect(player.play()).rejects.toThrow(/gesture/); expect(player.snapshot().state).toBe('paused');
+    element.paused = false; element.dispatchEvent(new Event('playing')); expect(player.snapshot().state).toBe('playing');
+    await expect(player.setRate(0)).rejects.toThrow(/rate/i); await expect(player.setRate(1.3)).rejects.toThrow(/rate/i);
+    await player.setRate(2); expect(element.playbackRate).toBe(2); player.dispose();
+  });
+
+  it('aborts and disposes pending seeks immediately, cancels timeouts and detaches events', async () => {
+    const { element, player } = setup(); await player.ready;
+    const abort = new AbortController(); const seek = player.seek(10, abort.signal);
+    const rejected = expect(seek).rejects.toThrow(/cancel/i); await Promise.resolve(); abort.abort(); await rejected;
+    const listener = vi.fn(); player.subscribe(listener);
+    const pending = player.seek(20, new AbortController().signal); const disposed = expect(pending).rejects.toThrow(/disposed/i);
+    await Promise.resolve(); player.dispose(); player.dispose(); await disposed;
+    listener.mockClear(); element.dispatchEvent(new Event('timeupdate')); expect(listener).not.toHaveBeenCalled();
+    expect(element.src).toBe(''); expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('times out without seeked and cancels an older overlapping seek', async () => {
+    const { element, player } = setup(); await player.ready;
+    const first = player.seek(10, new AbortController().signal); const superseded = expect(first).rejects.toThrow(/superseded/i);
+    await Promise.resolve(); const second = player.seek(20, new AbortController().signal); await superseded;
+    const timedOut = expect(second).rejects.toThrow(/timed out/i); await vi.advanceTimersByTimeAsync(5000); await timedOut;
+    expect(player.snapshot().seeking).toBe(false); expect(element.paused).toBe(true); player.dispose();
+  });
+
+  it('observes media changes and frame callbacks while releasing frame work on disposal', async () => {
+    const element = new MediaStub(); let callback: ((now: number, metadata: { mediaTime: number }) => void) | undefined;
+    const cancel = vi.fn(); Object.assign(element, {
+      requestVideoFrameCallback: vi.fn((fn: typeof callback) => { callback = fn; return 7; }), cancelVideoFrameCallback: cancel,
+    });
+    const player = createHtmlPlayer(element.asElement(), 'asset://video.mp4'); element.readyState = 1; element.dispatchEvent(new Event('loadedmetadata')); await player.ready;
+    const listener = vi.fn(); player.subscribe(listener); element.currentTime = 3; element.paused = false; element.dispatchEvent(new Event('playing'));
+    callback!(50, { mediaTime: 3.02 }); expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({ time: 3.02, state: 'playing' }));
+    element.dispatchEvent(new Event('waiting')); expect(player.snapshot().state).toBe('buffering');
+    player.dispose(); expect(cancel).toHaveBeenCalled();
+  });
+});

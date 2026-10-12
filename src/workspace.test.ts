@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {restoreWorkspace,compatibleZoom,moveBoundary,displayAnalysis} from './workspace';
+import {restoreWorkspace,compatibleZoom,moveBoundary,displayAnalysis,serializeWorkspace} from './workspace';
 import type {Session,Analysis} from './types';
 const session:Session={id:'one',source:'a.xrk',name:'a',driver:'',track:'',recordedAt:'',warnings:[],laps:[{id:'a',number:1,start:0,end:10,duration:10,complete:true},{id:'b',number:2,start:10,end:22,duration:12,complete:true}],channels:[{id:'speed',name:'GPS Speed',unit:'km/h',times:[],values:[]},{id:'rpm',name:'RPM',unit:'rpm',times:[],values:[]}]};
 describe('workspace recovery',()=>{
@@ -9,4 +9,13 @@ describe('workspace recovery',()=>{
  it('clamps track boundaries to ordered reference meters',()=>{expect(moveBoundary([100,200,300],1,400,400)).toEqual([100,298,300]);expect(moveBoundary([100,200,300],0,-10,400)).toEqual([2,200,300]);});
  it('converts metric speed channels from SI units',()=>{const a={primary:{series:[{name:'Speed',unit:'m/s',values:[10],x:[1],channelId:'s'}]},comparison:null,segments:[],delta:null} as unknown as Analysis;expect(displayAnalysis(a,'metric').primary.series[0]).toMatchObject({unit:'km/h',values:[36]});});
  it('converts speed presentation without changing raw analysis or spatial coordinates',()=>{const a={primary:{series:[{name:'GPS Speed',unit:'km/h',values:[100],x:[10],channelId:'s'}]},comparison:null,segments:[],delta:null} as unknown as Analysis;const shown=displayAnalysis(a,'imperial');expect(shown.primary.series[0].values[0]).toBeCloseTo(62.1371);expect(shown.primary.series[0].x).toEqual([10]);expect(a.primary.series[0].values).toEqual([100]);});
+});
+
+describe('video workspace persistence',()=>{
+  const video={version:1,sessionId:session.id,contentVersion:'v1',source:null,segments:[],selectedSegmentId:null,preferences:{panelHeight:400,playbackRate:1,pausedVideoTime:0}};
+  it('restores supported video view and saves persistent video JSON',()=>{const w=restoreWorkspace(session,{contentVersion:'v1',video,view:'video'},'v1');expect(w.view).toBe('video');expect(w.video?.state).toEqual(video);expect(serializeWorkspace(w).video).toEqual(video);});
+  it('retains telemetry usability with warnings for corrupt or future video',()=>{const w=restoreWorkspace(session,{contentVersion:'v1',primary:'b',video:{...video,version:2},view:'video'},'v1');expect(w.primary).toBe('b');expect(w.view).toBe('telemetry');expect(w.video?.warnings.length).toBeGreaterThan(0);expect(serializeWorkspace(w).video).toEqual({...video,version:2});});
+  it('discards video when telemetry content version changes',()=>{const w=restoreWorkspace(session,{contentVersion:'v1',video,view:'video'},'v2');expect(w.video?.state??null).toBeNull();expect(w.video?.warnings.length).toBeGreaterThan(0);expect(serializeWorkspace(w).video).toBeUndefined();});
+  it('preserves future advanced and video raw values through ordinary saves',()=>{const advanced={version:2,custom:{preserve:true}},futureVideo={...video,version:2};const w=restoreWorkspace(session,{contentVersion:'v1',advanced,video:futureVideo},'v1');expect(serializeWorkspace(w)).toMatchObject({advanced,video:futureVideo});});
+  it('enforces the combined 64 KiB workspace limit without truncating video',()=>{const w=restoreWorkspace(session,{contentVersion:'v1',advanced:{version:2,opaque:'x'.repeat(65500)},video},'v1');expect(()=>serializeWorkspace(w)).toThrow(/limit|large/i);});
 });

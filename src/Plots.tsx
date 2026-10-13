@@ -6,10 +6,11 @@ import type { Analysis, Axis, Series, TrackSegment, AdvancedEvent } from './type
 import { interpolate, mergeSeries } from './telemetry';
 const noEvents:AdvancedEvent[]=[];
 type Row={id:string;name:string;unit:string;primary:Series;comparison?:Series};
-export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,events=noEvents,focus=null,layout='comfortable',initialZoom=null,onZoom}:{analysis:Analysis;axis:Axis;onCursor:(x:number|null)=>void;resetVersion:number;cursor?:number|null;events?:AdvancedEvent[];focus?:TrackSegment|null;layout?:Workspace['layout'];initialZoom?:{min:number;max:number}|null;onZoom?:(range:{min:number;max:number})=>void}){
+export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,events=noEvents,focus=null,layout='comfortable',initialZoom=null,onZoom,onSeek}:{analysis:Analysis;axis:Axis;onCursor:(x:number|null)=>void;resetVersion:number;cursor?:number|null;events?:AdvancedEvent[];focus?:TrackSegment|null;layout?:Workspace['layout'];initialZoom?:{min:number;max:number}|null;onZoom?:(range:{min:number;max:number})=>void;onSeek?:(position:number)=>void}){
   const applyingCursor=useRef(false),sharedCursor=useRef(cursor);sharedCursor.current=cursor;
   const host=useRef<HTMLDivElement>(null),plots=useRef<uPlot[]>([]),callback=useRef(onCursor);callback.current=onCursor;
   const zoomCallback=useRef(onZoom);zoomCallback.current=onZoom;
+  const seekCallback=useRef(onSeek);seekCallback.current=onSeek;
   const previousReset=useRef(resetVersion),previousFocus=useRef<TrackSegment|null>(null);
   const readouts=useRef(new Map<string,HTMLElement>());
   const rows:Row[]=analysis.primary.series.map(s=>({id:s.channelId,name:s.name,unit:s.unit,primary:s,comparison:analysis.comparison?.series.find(c=>c.channelId===s.channelId)}));
@@ -27,17 +28,19 @@ export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,e
         const x=u.cursor.left==null||u.cursor.left<0?null:u.posToVal(u.cursor.left,'x');
         // uPlot can fire this hook while constructing/destroying a plot, before scales exist.
         if(!initialized||(x!=null&&!Number.isFinite(x)))return;
-        if(i===0&&!applyingCursor.current)callback.current(x);
+        if(i===0&&!applyingCursor.current&&nodes[i].querySelector('.u-over')?.matches(':hover'))callback.current(x);
         const readout=readouts.current.get(row.id);
         if(readout)readout.textContent=pairs.map(s=>{const value=x==null?null:interpolate(s.x,s.values,x,s.gaps);return value==null?'—':value.toFixed(row.unit==='rpm'?0:1);}).join(' / ')+' '+row.unit;
       }],setScale:[u=>{if(initialized&&i===0&&u.scales.x.min!=null&&u.scales.x.max!=null)zoomCallback.current?.({min:u.scales.x.min,max:u.scales.x.max});if(u.scales.x.min!=null&&u.scales.x.max!=null)plots.current.forEach(other=>{if(other!==u&&(other.scales.x.min!==u.scales.x.min||other.scales.x.max!==u.scales.x.max))other.setScale('x',{min:u.scales.x.min!,max:u.scales.x.max!});});}]}},mergeSeries(pairs) as uPlot.AlignedData,nodes[i]);
-      const el=nodes[i];let pan:{start:number;min:number;max:number}|null=null;
-      const down=(e:PointerEvent)=>{if(e.shiftKey||e.button===1){e.preventDefault();pan={start:e.clientX,min:plot.scales.x.min!,max:plot.scales.x.max!};el.setPointerCapture(e.pointerId);}};
+      const el=nodes[i];let intent:{x:number;y:number;eligible:boolean}|null=null;let pan:{start:number;min:number;max:number}|null=null;
+      const down=(e:PointerEvent)=>{intent={x:e.clientX,y:e.clientY,eligible:e.button===0&&!e.shiftKey};if(e.shiftKey||e.button===1){e.preventDefault();pan={start:e.clientX,min:plot.scales.x.min!,max:plot.scales.x.max!};el.setPointerCapture(e.pointerId);}};
       const move=(e:PointerEvent)=>{if(pan){const dx=(e.clientX-pan.start)/(plot.bbox.width/window.devicePixelRatio)*(pan.max-pan.min);plot.setScale('x',{min:pan.min-dx,max:pan.max-dx});}};
-      const up=()=>{pan=null;};
-      el.addEventListener('pointerdown',down,true);el.addEventListener('pointermove',move);el.addEventListener('pointerup',up);
+      const key=(e:KeyboardEvent)=>{const position=sharedCursor.current;if((e.key==='Enter'||e.key===' ')&&position!==null&&Number.isFinite(position)){e.preventDefault();seekCallback.current?.(position);}};
+      el.tabIndex=0;el.setAttribute('aria-label',`${row.name} graph cursor`);
+      const up=(e:PointerEvent)=>{if(intent?.eligible&&!pan&&Math.hypot(e.clientX-intent.x,e.clientY-intent.y)<4){const over=el.querySelector('.u-over')?.getBoundingClientRect();if(over&&e.clientX>=over.left&&e.clientX<=over.right&&e.clientY>=over.top&&e.clientY<=over.bottom){const position=plot.posToVal(e.clientX-over.left,'x');if(Number.isFinite(position))seekCallback.current?.(position);}}intent=null;pan=null;};
+      el.addEventListener('pointerdown',down,true);el.addEventListener('pointermove',move);el.addEventListener('pointerup',up);el.addEventListener('keydown',key);
       const observer=new ResizeObserver(()=>plot.setSize({width:Math.max(el.clientWidth,200),height}));observer.observe(el);
-      (plot as uPlot & {dispose:()=>void}).dispose=()=>{observer.disconnect();el.removeEventListener('pointerdown',down,true);el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',up);plot.destroy();};
+      (plot as uPlot & {dispose:()=>void}).dispose=()=>{observer.disconnect();el.removeEventListener('pointerdown',down,true);el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',up);el.removeEventListener('keydown',key);plot.destroy();};
       return plot;
     });
     if(initialZoom){const max=Math.max(...analysis.primary.series.map(s=>s.x.at(-1)??0),1);if(initialZoom.min>=0&&initialZoom.max<=max)plots.current.forEach(p=>p.setScale('x',initialZoom));}

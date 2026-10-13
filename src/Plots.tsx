@@ -28,7 +28,7 @@ export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,e
         const x=u.cursor.left==null||u.cursor.left<0?null:u.posToVal(u.cursor.left,'x');
         // uPlot can fire this hook while constructing/destroying a plot, before scales exist.
         if(!initialized||(x!=null&&!Number.isFinite(x)))return;
-        if(i===0&&!applyingCursor.current&&nodes[i].querySelector('.u-over')?.matches(':hover'))callback.current(x);
+        if(!applyingCursor.current&&nodes[i].querySelector('.u-over')?.matches(':hover'))callback.current(x);
         const readout=readouts.current.get(row.id);
         if(readout)readout.textContent=pairs.map(s=>{const value=x==null?null:interpolate(s.x,s.values,x,s.gaps);return value==null?'—':value.toFixed(row.unit==='rpm'?0:1);}).join(' / ')+' '+row.unit;
       }],setScale:[u=>{if(initialized&&i===0&&u.scales.x.min!=null&&u.scales.x.max!=null)zoomCallback.current?.({min:u.scales.x.min,max:u.scales.x.max});if(u.scales.x.min!=null&&u.scales.x.max!=null)plots.current.forEach(other=>{if(other!==u&&(other.scales.x.min!==u.scales.x.min||other.scales.x.max!==u.scales.x.max))other.setScale('x',{min:u.scales.x.min!,max:u.scales.x.max!});});}]}},mergeSeries(pairs) as uPlot.AlignedData,nodes[i]);

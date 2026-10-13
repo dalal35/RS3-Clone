@@ -16,6 +16,7 @@ export function createHtmlPlayer(element: HTMLVideoElement, url: string): VideoP
   void ready.catch(() => {});
   const observe = (mediaTime?: number) => {
     if (disposed) return;
+    if (state === 'ended' && element.paused && !element.ended && element.currentTime < element.duration) state = 'paused';
     sample = { time: mediaTime ?? element.currentTime, duration: Number.isFinite(element.duration) ? element.duration : null,
       rate: element.playbackRate, state, seeking: !!pending || element.seeking, observedAtMs: performance.now(), error: failure?.message };
     listeners.forEach(listener => listener({ ...sample }));
@@ -47,7 +48,11 @@ export function createHtmlPlayer(element: HTMLVideoElement, url: string): VideoP
   Object.entries(events).forEach(([event, listener]) => element.addEventListener(event, listener));
   const nextFrame = () => {
     if (!disposed && element.requestVideoFrameCallback) {
-      frame = element.requestVideoFrameCallback((_now, metadata) => { observe(metadata.mediaTime); nextFrame(); });
+      frame = element.requestVideoFrameCallback((_now, metadata) => {
+        // Decoded frame times may precede a paused seek's requested element clock.
+        observe(state === 'playing' && !element.paused && !pending && !element.seeking ? metadata.mediaTime : undefined);
+        nextFrame();
+      });
     }
   };
   element.src = url;
@@ -90,7 +95,7 @@ export function createHtmlPlayer(element: HTMLVideoElement, url: string): VideoP
         void ready.then(() => {
           if (settled) return;
           if (element.duration < time) return operation.finish(new Error('Video seek time is beyond the video duration.'));
-          if (!element.seeking && Math.abs(element.currentTime - time) <= .05) return operation.finish();
+          if (!element.seeking && element.currentTime === time) return operation.finish();
           try { element.currentTime = time; observe(); } catch (error) { operation.finish(error instanceof Error ? error : new Error(String(error))); }
         }, error => operation.finish(error));
       });

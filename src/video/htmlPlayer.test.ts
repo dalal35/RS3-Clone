@@ -51,11 +51,20 @@ class MediaStub extends EventTarget {
   asElement() { return this as unknown as HTMLVideoElement; }
 }
 
+class FrameMediaStub extends MediaStub {
+  frameCallback?: VideoFrameRequestCallback;
+  requestVideoFrameCallback = vi.fn((callback: VideoFrameRequestCallback) => { this.frameCallback = callback; return 7; });
+  cancelVideoFrameCallback = vi.fn();
+  presentFrame(mediaTime: number) {
+    this.frameCallback!(performance.now(), { mediaTime } as VideoFrameCallbackMetadata);
+  }
+}
+
 describe('HTML video asynchronous adapter', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
-  function setup() {
-    const element = new MediaStub(); const player = createHtmlPlayer(element.asElement(), 'asset://video.mp4');
+  function setup(element = new MediaStub()) {
+    const player = createHtmlPlayer(element.asElement(), 'asset://video.mp4');
     element.readyState = 1; element.dispatchEvent(new Event('loadedmetadata'));
     return { element, player };
   }
@@ -68,6 +77,56 @@ describe('HTML video asynchronous adapter', () => {
     element.currentTime = 9; element.dispatchEvent(new Event('seeked')); await Promise.resolve(); expect(finished).toBe(false);
     element.currentTime = 10.04; element.dispatchEvent(new Event('seeked')); await seek;
     await player.seek(10.04, abort.signal); expect(player.snapshot().seeking).toBe(false); player.dispose();
+  });
+
+  it('keeps a completed paused seek clock when a preceding decoded frame arrives later', async () => {
+    const element = new FrameMediaStub(); const { player } = setup(element); await player.ready;
+    const seek = player.seek(26.585, new AbortController().signal);
+    await Promise.resolve(); element.dispatchEvent(new Event('seeked')); await seek;
+    element.presentFrame(26.5666666667);
+    expect(player.snapshot()).toMatchObject({ time: 26.585, state: 'paused', seeking: false });
+    player.dispose();
+  });
+
+  it('uses the element clock for frame callbacks during a pending seek', async () => {
+    const element = new FrameMediaStub(); const { player } = setup(element); await player.ready;
+    element.paused = false; element.dispatchEvent(new Event('playing'));
+    const seek = player.seek(26.585, new AbortController().signal); await Promise.resolve();
+    element.seeking = true; element.presentFrame(3);
+    expect(player.snapshot()).toMatchObject({ time: 26.585, seeking: true });
+    element.seeking = false; element.dispatchEvent(new Event('seeked')); await seek;
+    player.dispose();
+  });
+
+  it.each(['waiting', 'pause'])('uses the element clock when a frame arrives after %s', async event => {
+    const element = new FrameMediaStub(); const { player } = setup(element); await player.ready;
+    element.paused = false; element.dispatchEvent(new Event('playing'));
+    element.currentTime = 4;
+    if (event === 'pause') element.paused = true;
+    element.dispatchEvent(new Event(event)); element.presentFrame(3.9);
+    expect(player.snapshot()).toMatchObject({ time: 4, state: event === 'pause' ? 'paused' : 'buffering' });
+    player.dispose();
+  });
+
+  it('applies a distinct seek target within completion tolerance before resolving', async () => {
+    const { element, player } = setup(); await player.ready;
+    element.currentTime = 26.57; element.dispatchEvent(new Event('timeupdate'));
+    let finished = false;
+    const seek = player.seek(26.585, new AbortController().signal).then(() => { finished = true; });
+    await Promise.resolve();
+    expect(element.currentTime).toBe(26.585); expect(finished).toBe(false);
+    element.dispatchEvent(new Event('seeked')); await seek;
+    expect(player.snapshot().time).toBe(26.585); player.dispose();
+  });
+
+  it('reflects a native paused seek away from the endpoint after ending', async () => {
+    const { element, player } = setup(); await player.ready;
+    element.currentTime = 60; element.ended = true; element.dispatchEvent(new Event('ended'));
+    expect(player.snapshot().state).toBe('ended');
+    element.currentTime = 30; element.ended = false; element.seeking = true; element.dispatchEvent(new Event('seeking'));
+    element.seeking = false; element.dispatchEvent(new Event('seeked'));
+    expect(player.snapshot()).toMatchObject({ time: 30, state: 'paused', seeking: false });
+    player.dispose();
   });
 
   it('rejects codec errors before and after readiness and notifies subscribers', async () => {

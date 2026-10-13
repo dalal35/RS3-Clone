@@ -48,6 +48,9 @@ export function VideoWorkspace(props:VideoWorkspaceProps) {
   const knownDuration=sample.duration!==null&&Number.isFinite(sample.duration)&&sample.duration>0?sample.duration:null;
   const coverage=lapCoverage(state.segments,session.laps);
   const reverse=telemetryTime===null?{kind:'unavailable' as const}:telemetryToVideo(state.segments,telemetryTime);
+  useEffect(()=>{
+    setAnchorLapId(current=>session.laps.some(lap=>lap.id===current)?current:session.laps[0]?.id??'');
+  },[session.id,session.laps]);
   useEffect(()=>setAcceptedKey(null),[availability]);
   useEffect(()=>setHeight(clampHeight(state.preferences.panelHeight)),[state.preferences.panelHeight]);
   useEffect(()=>{setReferenceStatus('ready');setPending(null);setError('');},[sourceKey]);

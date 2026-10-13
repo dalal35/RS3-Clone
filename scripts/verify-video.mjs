@@ -31,7 +31,9 @@ try {
   await page.evaluate(()=>window.fixtureReset());
   await pick();await page.getByRole('button',{name:'Attach MP4 / MOV',exact:true}).click();await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
   await page.evaluate(()=>{document.querySelector('video').currentTime=10;});
-  await page.getByLabel('Anchor lap',{exact:true}).selectOption('lap2');await page.getByRole('button',{name:'Sync Here',exact:true}).click();
+  await page.getByLabel('Anchor lap',{exact:true}).selectOption('lap2');
+  await page.evaluate(()=>window.fixtureRerender());await expect(page.getByLabel('Anchor lap',{exact:true})).toHaveValue('lap2');
+  await page.getByRole('button',{name:'Sync Here',exact:true}).click();
   let saved=await state();assert.equal(saved.segments.length,1);assert.deepEqual([saved.segments[0].videoStart,saved.segments[0].videoEnd,saved.segments[0].anchorVideoTime,saved.segments[0].anchorTelemetryTime,saved.segments[0].anchorLapId],[0,60,10,120,'lap2']);
   await expect(page.getByText('Lap 1 · partial coverage',{exact:true})).toBeVisible();await expect(page.getByText('Lap 2 · full coverage',{exact:true})).toBeVisible();await expect(page.getByText('Lap 4 · partial coverage',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:/Predicted lap 2 crossing/})).toBeVisible();
@@ -61,6 +63,23 @@ try {
   saved=await state();await page.evaluate(()=>window.fixtureAvailability('missing'));await expect(page.getByRole('strong').filter({hasText:'Footage unavailable'})).toBeVisible();await expect.poll(()=>page.evaluate(()=>window.fixturePlayer===null)).toBe(true);await pick('/fixture/moved.mp4');await page.getByRole('button',{name:'Locate',exact:true}).click();await expect(page.getByRole('button',{name:'Confirm mappings still apply'})).toBeVisible();assert.deepEqual((await state()).segments,saved.segments);await page.getByRole('button',{name:'Confirm mappings still apply'}).click();assert.deepEqual((await state()).segments,saved.segments);assert.equal((await state()).source.path,'/fixture/moved.mp4');await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
   await page.evaluate(()=>window.fixtureAvailability('ready'));await pick('/fixture/replaced.mov');await page.getByRole('button',{name:'Replace footage',exact:true}).click();await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.deepEqual((await state()).segments,saved.segments,'cancel replacement preserves mappings');await page.getByRole('button',{name:'Replace footage',exact:true}).click();await page.getByRole('button',{name:'Replace and clear segments',exact:true}).click();assert.equal((await state()).segments.length,0);assert.equal((await state()).source.path,'/fixture/replaced.mov');
   await page.evaluate(()=>window.fixtureAvailability('changed'));await expect.poll(()=>page.evaluate(()=>window.fixturePlayer===null)).toBe(true);await expect(page.getByText('The file metadata changed. Confirm that the existing mappings still apply.',{exact:true})).toBeVisible();await pick('/fixture/replaced.mov');await page.getByRole('button',{name:'Locate',exact:true}).click();await page.getByRole('button',{name:'Confirm mappings still apply'}).click();await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
+  // Reuse the same component across sessions; stale lap IDs must not make Sync Here a silent no-op.
+  await page.evaluate(()=>{window.fixtureAvailability('ready');window.fixtureSwitchSession({...window.fixtureSession,id:'second-session',laps:[
+    {id:'second-lap1',number:1,start:300,end:320,duration:20,complete:true},
+    {id:'second-lap2',number:2,start:320,end:340,duration:20,complete:true}
+  ]});});
+  await pick();await page.getByRole('button',{name:'Attach MP4 / MOV',exact:true}).click();await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
+  await page.evaluate(()=>{document.querySelector('video').currentTime=7;});
+  await page.getByRole('button',{name:'Sync Here',exact:true}).click();
+  saved=await state();assert.equal(saved.segments.length,1,'session switch must leave Sync Here usable');
+  assert.deepEqual([saved.segments[0].anchorVideoTime,saved.segments[0].anchorTelemetryTime,saved.segments[0].anchorLapId],[7,300,'second-lap1']);
+  await expect(page.getByLabel('Anchor lap',{exact:true})).toHaveValue('second-lap1');
+  await page.getByLabel('Anchor lap',{exact:true}).selectOption('second-lap2');await page.evaluate(()=>window.fixtureRerender());
+  await expect(page.getByLabel('Anchor lap',{exact:true})).toHaveValue('second-lap2');
+  await page.getByRole('button',{name:'Sync Here',exact:true}).click();assert.equal((await state()).segments[0].anchorTelemetryTime,320,'same-session rerender preserves deliberate anchor');
+  await page.evaluate(()=>window.fixtureLaps(window.fixtureSession.laps.slice(0,1)));
+  await page.getByRole('button',{name:'Sync Here',exact:true}).click();
+  assert.equal((await state()).segments[0].anchorTelemetryTime,300,'removed anchor lap falls back to an available lap');
   await page.evaluate(()=>{window.fixtureAvailability('ready');window.fixtureUnknown=true;window.fixtureReset();});await pick();await page.getByRole('button',{name:'Attach MP4 / MOV',exact:true}).click();await expect(page.getByText('Waiting for a known video duration before creating segments.',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Sync Here',exact:true})).toBeDisabled();
   await page.evaluate(()=>{const video=document.querySelector('video');video.dispatchEvent(new Event('error'));});await expect(page.getByRole('alert')).toContainText(/codec|playback failed/i);
   assert.deepEqual(errors,[]);console.log('PASS: video source cancel/replace/Locate, lap anchors, trim/add/validation/correction/removal, coverage, ambiguity, keyboard timeline/resize, semantic preferences, sticky dark/light player and readiness/errors (simulated clock; native playback checked separately)');

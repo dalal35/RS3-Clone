@@ -1,3 +1,4 @@
+pub mod merging;
 pub mod library;
 pub mod telemetry;
 pub mod video;

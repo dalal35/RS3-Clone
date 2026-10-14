@@ -16,3 +16,8 @@ export interface AdvancedStats {count:number;duration:number;min:number|null;max
 export interface AdvancedEvent {id:string;lapId:string;kind:string;evidence:string;sourceTime:number;endTime:number;position:number|null;endPosition:number|null;rpmBefore:number|null;rpmAfter:number|null;rpmChange:number|null;minRpm:number|null;duration:number|null;recoveryTime:number|null;cornerId:string|null}
 export interface AdvancedLap {lapId:string;points:AdvancedPoint[];stats:AdvancedStats;yStats?:AdvancedStats;histogram:{low:number;high:number;value:number}[];events:AdvancedEvent[];excludedCount:number;unsupportedCount?:number}
 export interface AdvancedResult {tool:string;xUnit:string;yUnit:string;laps:AdvancedLap[];notes:string[]}
+
+export interface SourceRef {sessionId:string;contentVersion:string}
+export interface MergedLap extends Lap {sourceSessionId:string;sourceLapId:string;displayNumber:number}
+export interface MergedChannel extends Channel {sourceSessionId:string;sourceChannelId:string}
+export interface MergePreview {sources:SourceRef[];day:string;laps:MergedLap[];channels:MergedChannel[];warnings:string[];previewVersion:string}

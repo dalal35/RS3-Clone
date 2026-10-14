@@ -50,6 +50,12 @@ pub struct MergePreview {
 pub fn qualified_lap_id(source: &str, lap: &str) -> String {
     serde_json::to_string(&(source, lap)).expect("string pair")
 }
+pub fn qualified_channel_id(source: &str, channel: &str) -> String {
+    format!(
+        "source-channel-{:x}",
+        Sha256::digest(qualified_lap_id(source, channel).as_bytes())
+    )
+}
 pub fn split_id(id: &str) -> Result<(String, String), String> {
     serde_json::from_str(id).map_err(|_| "Invalid source-qualified identity.".into())
 }
@@ -209,7 +215,7 @@ pub fn preview_sources(sources: &[&Session], refs: &[SourceRef]) -> Result<Merge
         for c in &s.channels {
             channels.push(MergedChannel {
                 channel: Channel {
-                    id: qualified_lap_id(&s.id, &c.id),
+                    id: qualified_channel_id(&s.id, &c.id),
                     name: c.name.clone(),
                     unit: c.unit.clone(),
                     times: vec![],

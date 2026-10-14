@@ -656,9 +656,6 @@ pub fn analyze_with_boundaries(
     channel_ids: &[String],
     boundaries: Option<&[f64]>,
 ) -> Result<Analysis, String> {
-    if !matches!(axis, "distance" | "time") {
-        return Err("Choose time or distance for the horizontal axis.".into());
-    }
     let p = s
         .laps
         .iter()
@@ -672,7 +669,58 @@ pub fn analyze_with_boundaries(
                 .ok_or("Comparison lap not found")
         })
         .transpose()?;
-    let spatial = spatial::align(s, p, c);
+    let bindings: Vec<_> = channel_ids
+        .iter()
+        .map(|id| ChannelBinding {
+            output_id: id.clone(),
+            primary_id: Some(id.clone()),
+            comparison_id: Some(id.clone()),
+        })
+        .collect();
+    analyze_sources(
+        LapSource { session: s, lap: p },
+        c.map(|lap| LapSource { session: s, lap }),
+        axis,
+        &bindings,
+        boundaries,
+    )
+}
+
+#[derive(Clone, Copy)]
+pub struct LapSource<'a> {
+    pub session: &'a Session,
+    pub lap: &'a Lap,
+}
+#[derive(Clone, Debug)]
+pub struct ChannelBinding {
+    pub output_id: String,
+    pub primary_id: Option<String>,
+    pub comparison_id: Option<String>,
+}
+pub fn analyze_sources(
+    primary: LapSource<'_>,
+    comparison: Option<LapSource<'_>>,
+    axis: &str,
+    channels: &[ChannelBinding],
+    boundaries: Option<&[f64]>,
+) -> Result<Analysis, String> {
+    let s = primary.session;
+    let p = primary.lap;
+    let cs = comparison.map(|c| c.session).unwrap_or(s);
+    let c = comparison.map(|c| c.lap);
+    let primary_ids: Vec<_> = channels
+        .iter()
+        .filter_map(|b| b.primary_id.clone())
+        .collect();
+    let comparison_ids: Vec<_> = channels
+        .iter()
+        .filter_map(|b| b.comparison_id.clone())
+        .collect();
+    let channel_ids = &primary_ids;
+    if !matches!(axis, "distance" | "time") {
+        return Err("Choose time or distance for the horizontal axis.".into());
+    }
+    let spatial = spatial::align_sources(primary, comparison);
     let (mut alignment, geometry) = match spatial {
         Ok(g) => (g.alignment(), Some(g)),
         Err(note) => (Alignment::unavailable(note), None),
@@ -684,7 +732,7 @@ pub fn analyze_with_boundaries(
     let cd = geometry
         .as_ref()
         .and_then(|g| g.comparison.clone())
-        .or_else(|| c.and_then(|l| distance(s, l)));
+        .or_else(|| c.and_then(|l| distance(cs, l)));
     if axis == "distance" && (pd.is_none() || (c.is_some() && cd.is_none())) {
         return Err("Distance view needs validated GPS alignment or continuous speed data in known units. Switch to time.".into());
     }
@@ -750,19 +798,83 @@ pub fn analyze_with_boundaries(
     }
     let segments = geometry
         .as_ref()
-        .map(|g| g.segments(s, p, c, axis, channel_ids, boundaries))
+        .map(|g| g.segments_sources(s, cs, p, c, axis, channel_ids, &comparison_ids, boundaries))
         .transpose()?
         .unwrap_or_default();
     warnings.extend(alignment.notes.clone());
     let reference_time = geometry.as_ref().map(|g| &g.primary);
     let mut primary = lap_view(s, p, axis, channel_ids, pd.as_ref(), reference_time);
-    let mut comparison = c.map(|c| lap_view(s, c, axis, channel_ids, cd.as_ref(), reference_time));
+    let mut comparison =
+        c.map(|c| lap_view(cs, c, axis, &comparison_ids, cd.as_ref(), reference_time));
     if let Some(g) = &geometry {
         primary.track = g.track(s, p, false, axis);
         if let (Some(view), Some(lap)) = (&mut comparison, c) {
-            view.track = g.track(s, lap, true, axis);
+            view.track = g.track(cs, lap, true, axis);
         }
     }
+    fn remap_series(view: &mut LapView, bindings: &[ChannelBinding], comparison: bool) {
+        let originals = std::mem::take(&mut view.series);
+        view.series = bindings
+            .iter()
+            .filter_map(|b| {
+                let id = if comparison {
+                    b.comparison_id.as_ref()
+                } else {
+                    b.primary_id.as_ref()
+                }?;
+                let mut series = originals.iter().find(|s| s.channel_id == *id)?.clone();
+                series.channel_id = b.output_id.clone();
+                Some(series)
+            })
+            .collect();
+    }
+    remap_series(&mut primary, channels, false);
+    if let Some(view) = &mut comparison {
+        remap_series(view, channels, true);
+    }
+    let mut segments = segments;
+    fn remap_means(metrics: &mut SegmentMetrics, bindings: &[ChannelBinding], comparison: bool) {
+        let originals = std::mem::take(&mut metrics.channels);
+        metrics.channels = bindings
+            .iter()
+            .filter_map(|b| {
+                let id = if comparison {
+                    b.comparison_id.as_ref()
+                } else {
+                    b.primary_id.as_ref()
+                }?;
+                let mut mean = originals.iter().find(|m| m.channel_id == *id)?.clone();
+                mean.channel_id = b.output_id.clone();
+                Some(mean)
+            })
+            .collect();
+    }
+    for segment in &mut segments {
+        remap_means(&mut segment.primary, channels, false);
+        if let Some(metrics) = &mut segment.comparison {
+            remap_means(metrics, channels, true);
+        }
+    }
+    if channels
+        .iter()
+        .any(|b| b.primary_id.is_none() || (c.is_some() && b.comparison_id.is_none()))
+    {
+        warnings.push("Some selected channels are unavailable or ambiguous in a source; no samples were substituted.".into());
+    }
+    let conflict = s.id != cs.id
+        && !s.track.trim().is_empty()
+        && !cs.track.trim().is_empty()
+        && !s.track.trim().eq_ignore_ascii_case(cs.track.trim());
+    let delta = if conflict && geometry.is_none() {
+        warnings.push("Conflicting track metadata without validated spatial compatibility: cross-source delta and corner comparisons are unavailable.".into());
+        for segment in &mut segments {
+            segment.comparison = None;
+            segment.delta_seconds = None;
+        }
+        None
+    } else {
+        delta
+    };
     Ok(Analysis {
         corner_boundaries: boundaries.map(|b| b.to_vec()),
         primary,
@@ -772,6 +884,45 @@ pub fn analyze_with_boundaries(
         segments,
         warnings,
     })
+}
+// Short-lived calculation buffers contain only selected lap windows plus two neighboring
+// samples for boundary/derivative calculations; originals remain shared in the library cache.
+pub fn selected_session(source: &Session, ids: &[&str]) -> Session {
+    let mut result = crate::merging::descriptor(source);
+    result.laps.retain(|l| ids.contains(&l.id.as_str()));
+    result.channels = source
+        .channels
+        .iter()
+        .map(|c| {
+            let mut ranges: Vec<_> = result
+                .laps
+                .iter()
+                .map(|l| {
+                    (
+                        c.times.partition_point(|t| *t < l.start).saturating_sub(2),
+                        (c.times.partition_point(|t| *t <= l.end) + 2).min(c.times.len()),
+                    )
+                })
+                .collect();
+            ranges.sort_unstable();
+            let mut indices = Vec::new();
+            for (start, end) in ranges {
+                let from = indices
+                    .last()
+                    .map_or(start, |last: &usize| start.max(*last + 1));
+                indices.extend(from..end);
+            }
+            Channel {
+                id: c.id.clone(),
+                name: c.name.clone(),
+                unit: c.unit.clone(),
+                gaps: source_gaps(c),
+                times: indices.iter().map(|i| c.times[*i]).collect(),
+                values: indices.iter().map(|i| c.values[*i]).collect(),
+            }
+        })
+        .collect();
+    result
 }
 #[cfg(test)]
 mod tests;

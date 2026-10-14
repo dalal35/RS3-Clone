@@ -1,5 +1,6 @@
 use super::{Channel, Session};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Formula {
     pub id: String,
@@ -607,7 +608,12 @@ fn refs(a: &Ast, out: &mut Vec<String>) {
 }
 // Every dimensionless subtree uses canonical values. This invariant keeps scalar
 // products and nonlinear functions correct even when speed-unit ratios carry scale.
-fn calc(a: &Ast, times: &[f64], channels: &[Channel], gaps: &[[f64; 2]]) -> Result<Data, String> {
+fn calc(
+    a: &Ast,
+    times: &[f64],
+    channels: &[Cow<'_, Channel>],
+    gaps: &[[f64; 2]],
+) -> Result<Data, String> {
     let mut data = calc_inner(a, times, channels, gaps)?;
     if data.unit.dimensionless() {
         for value in &mut data.values {
@@ -620,7 +626,7 @@ fn calc(a: &Ast, times: &[f64], channels: &[Channel], gaps: &[[f64; 2]]) -> Resu
 fn calc_inner(
     a: &Ast,
     times: &[f64],
-    channels: &[Channel],
+    channels: &[Cow<'_, Channel>],
     gaps: &[[f64; 2]],
 ) -> Result<Data, String> {
     let constant = |n, u| Data {
@@ -816,7 +822,7 @@ pub fn evaluate(session: &Session, formulas: &[Formula]) -> Result<Vec<Channel>,
         }
         parsed.push(a);
     }
-    let mut channels = session.channels.clone();
+    let mut channels: Vec<Cow<'_, Channel>> = session.channels.iter().map(Cow::Borrowed).collect();
     let mut state = vec![0u8; formulas.len()];
     let mut result = vec![None; formulas.len()];
     fn visit(
@@ -824,7 +830,7 @@ pub fn evaluate(session: &Session, formulas: &[Formula]) -> Result<Vec<Channel>,
         fs: &[Formula],
         asts: &[Ast],
         state: &mut [u8],
-        channels: &mut Vec<Channel>,
+        channels: &mut Vec<Cow<'_, Channel>>,
         result: &mut [Option<Channel>],
     ) -> Result<(), String> {
         if state[i] == 2 {
@@ -867,7 +873,7 @@ pub fn evaluate(session: &Session, formulas: &[Formula]) -> Result<Vec<Channel>,
         let mut gaps: Vec<[f64; 2]> = channels
             .iter()
             .filter(|c| dependencies.contains(&c.id))
-            .flat_map(super::source_gaps)
+            .flat_map(|c| super::source_gaps(c))
             .collect();
         let d =
             calc(&asts[i], &times, channels, &gaps).map_err(|e| format!("{}: {e}", fs[i].name))?;
@@ -892,7 +898,7 @@ pub fn evaluate(session: &Session, formulas: &[Formula]) -> Result<Vec<Channel>,
             values,
             gaps,
         };
-        channels.push(c.clone());
+        channels.push(Cow::Owned(c.clone()));
         result[i] = Some(c);
         state[i] = 2;
         Ok(())

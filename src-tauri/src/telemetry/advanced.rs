@@ -463,6 +463,14 @@ fn pieces(
     out
 }
 pub fn analyze(s: &Session, a: &Analysis, r: &AdvancedRequest) -> Result<AdvancedResult, String> {
+    analyze_with_bounds(s, a, r, None)
+}
+fn analyze_with_bounds(
+    s: &Session,
+    a: &Analysis,
+    r: &AdvancedRequest,
+    histogram_bounds: Option<(f64, f64)>,
+) -> Result<AdvancedResult, String> {
     // Calibration belongs to the accelerometer view, never to arbitrary channels
     // selected later in the shared workspace.
     let mut effective = r.clone();
@@ -474,10 +482,10 @@ pub fn analyze(s: &Session, a: &Analysis, r: &AdvancedRequest) -> Result<Advance
     }
     let r = &effective;
     // Compute the shared source outage policy once, never once per interpolation.
-    let mut prepared = s.clone();
-    for channel in &mut prepared.channels {
-        channel.gaps = super::source_gaps(channel);
-    }
+    let ids: Vec<_> = std::iter::once(a.primary.lap_id.as_str())
+        .chain(a.comparison.iter().map(|v| v.lap_id.as_str()))
+        .collect();
+    let prepared = super::selected_session(s, &ids);
     let s = &prepared;
     if !matches!(
         r.tool.as_str(),
@@ -656,6 +664,7 @@ pub fn analyze(s: &Session, a: &Analysis, r: &AdvancedRequest) -> Result<Advance
             .filter_map(|l| l.stats.max)
             .reduce(f64::max);
         if let (Some(min), Some(max)) = (min, max) {
+            let (min, max) = histogram_bounds.unwrap_or((min, max));
             let low = if min == max { min - 0.5 } else { min };
             let high = if min == max { max + 0.5 } else { max };
             let count = if let Some(w) = r.bin_width {
@@ -731,6 +740,125 @@ pub fn analyze(s: &Session, a: &Analysis, r: &AdvancedRequest) -> Result<Advance
             .push("No supported samples in this selection.".into())
     }
     Ok(result)
+}
+pub fn analyze_sources(
+    primary: super::LapSource<'_>,
+    comparison: Option<super::LapSource<'_>>,
+    a: &Analysis,
+    request: &AdvancedRequest,
+    bindings: &[super::ChannelBinding],
+) -> Result<AdvancedResult, String> {
+    let sources: Vec<_> = std::iter::once((primary, &a.primary, false))
+        .chain(
+            comparison
+                .zip(a.comparison.as_ref())
+                .map(|(source, view)| (source, view, true)),
+        )
+        .collect();
+    let mut contexts = vec![];
+    for (source, view, is_comparison) in &sources {
+        let mut r = request.clone();
+        let mapped = |id: &Option<String>| {
+            id.as_ref().and_then(|id| {
+                bindings.iter().find(|b| b.output_id == *id).and_then(|b| {
+                    if *is_comparison {
+                        b.comparison_id.clone()
+                    } else {
+                        b.primary_id.clone()
+                    }
+                })
+            })
+        };
+        r.x_channel = mapped(&r.x_channel);
+        r.y_channel = mapped(&r.y_channel);
+        r.hist_channel = mapped(&r.hist_channel);
+        r.color_channel = mapped(&r.color_channel);
+        if let Some(f) = &mut r.value_filter {
+            f.channel = mapped(&Some(f.channel.clone())).unwrap_or_else(|| "\0unavailable".into());
+        }
+        r.excluded_ids = r
+            .excluded_ids
+            .iter()
+            .filter_map(|id| {
+                crate::merging::split_id(id)
+                    .ok()
+                    .filter(|(s, _)| s == &source.session.id)
+                    .map(|(_, id)| id)
+            })
+            .collect();
+        let mut single = a.clone();
+        if *is_comparison {
+            let mut sentinel = String::from("\0unselected");
+            while source.session.laps.iter().any(|l| l.id == sentinel) {
+                sentinel.push('_');
+            }
+            single.primary.lap_id = sentinel;
+            single.comparison = Some((*view).clone());
+            single.comparison.as_mut().unwrap().lap_id = source.lap.id.clone();
+        } else {
+            single.primary.lap_id = source.lap.id.clone();
+            single.comparison = None;
+        }
+        contexts.push((source, single, r));
+    }
+    let run = |bounds: Option<(f64, f64)>| -> Result<AdvancedResult, String> {
+        let mut result = AdvancedResult {
+            tool: request.tool.clone(),
+            x_unit: String::new(),
+            y_unit: String::new(),
+            laps: vec![],
+            notes: vec![],
+        };
+        for (source, analysis, r) in &contexts {
+            let mut part = analyze_with_bounds(source.session, analysis, r, bounds)?;
+            if result.x_unit.is_empty() {
+                result.x_unit = part.x_unit.clone();
+                result.y_unit = part.y_unit.clone();
+            }
+            if !part.x_unit.is_empty()
+                && (part.x_unit != result.x_unit || part.y_unit != result.y_unit)
+            {
+                result.notes.push(format!(
+                    "{}: incompatible channel units; advanced comparison withheld.",
+                    source.session.name
+                ));
+                continue;
+            }
+            for lap in &mut part.laps {
+                lap.lap_id = crate::merging::qualified_lap_id(&source.session.id, &source.lap.id);
+                for event in &mut lap.events {
+                    event.lap_id = lap.lap_id.clone();
+                    event.id = crate::merging::qualified_lap_id(&source.session.id, &event.id);
+                }
+            }
+            if part.laps.is_empty() {
+                result.notes.push(format!(
+                    "{}: requested advanced data unavailable in this source.",
+                    source.session.name
+                ));
+            }
+            result.laps.extend(part.laps);
+            result.notes.extend(part.notes);
+        }
+        Ok(result)
+    };
+    let first = run(None)?;
+    if request.tool == "histogram" && first.laps.len() > 1 {
+        let min = first
+            .laps
+            .iter()
+            .filter_map(|l| l.stats.min)
+            .reduce(f64::min);
+        let max = first
+            .laps
+            .iter()
+            .filter_map(|l| l.stats.max)
+            .reduce(f64::max);
+        if let Some(bounds) = min.zip(max) {
+            return run(Some(bounds));
+        }
+    }
+    Ok(first)
 }
 #[cfg(test)]
 mod event_tests {

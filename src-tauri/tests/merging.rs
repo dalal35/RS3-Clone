@@ -190,3 +190,89 @@ fn merge_settings_bounds() {
         .is_err());
     fs::remove_dir_all(p).unwrap();
 }
+
+#[test]
+fn cross_source_formulas() {
+    let (p, mut lib, ids) = setup("formulas");
+    let id = create(&mut lib, &ids);
+    let merged = lib.load(&id).unwrap();
+    let info = merged.merge.as_ref().unwrap();
+    let primary = info
+        .preview
+        .laps
+        .iter()
+        .find(|l| l.source_session_id == ids[0] && l.lap.complete)
+        .unwrap();
+    let comparison = info
+        .preview
+        .laps
+        .iter()
+        .find(|l| l.source_session_id == ids[1] && l.lap.complete)
+        .unwrap();
+    let channel = info
+        .preview
+        .channels
+        .iter()
+        .find(|c| c.source_session_id == ids[0] && c.channel.name.to_lowercase().contains("rpm"))
+        .unwrap();
+    let f = vec![apex_telemetry::telemetry::expressions::Formula {
+        id: "derived".into(),
+        name: "RPM plus".into(),
+        expression: format!("[{}]+10{{rpm}}", channel.channel.id),
+    }];
+    assert!(lib.validate_formulas(&id, &f).is_ok());
+    let a = lib
+        .analyze_formulas(
+            &id,
+            &primary.lap.id,
+            Some(&comparison.lap.id),
+            "time",
+            &["derived".into()],
+            &f,
+        )
+        .unwrap();
+    assert!(!a.primary.series[0].values.is_empty());
+    assert!(!a.comparison.unwrap().series[0].values.is_empty());
+    fs::remove_dir_all(p).unwrap();
+}
+#[test]
+fn merged_corner_reset_inheritance() {
+    let (p, mut lib, ids) = setup("corners");
+    let original = lib.load(&ids[0]).unwrap();
+    let lap = original.laps.iter().find(|l| l.complete).unwrap();
+    let automatic = lib
+        .analyze(&ids[0], &lap.id, None, "distance", &[])
+        .unwrap();
+    let mut boundaries: Vec<_> = automatic
+        .segments
+        .iter()
+        .skip(1)
+        .map(|s| s.start_meters)
+        .collect();
+    boundaries[0] += 1.;
+    lib.set_corner_boundaries(&ids[0], &lap.id, Some(boundaries.clone()))
+        .unwrap();
+    let id = create(&mut lib, &ids);
+    let q = apex_telemetry::merging::qualified_lap_id(&ids[0], &lap.id);
+    assert_eq!(
+        lib.analyze(&id, &q, None, "distance", &[])
+            .unwrap()
+            .corner_boundaries,
+        Some(boundaries.clone())
+    );
+    lib.set_corner_boundaries(&id, &q, None).unwrap();
+    assert_eq!(
+        lib.analyze(&id, &q, None, "distance", &[])
+            .unwrap()
+            .corner_boundaries,
+        None
+    );
+    lib.unmerge(&id).unwrap();
+    assert_eq!(
+        lib.analyze(&ids[0], &lap.id, None, "distance", &[])
+            .unwrap()
+            .corner_boundaries,
+        Some(boundaries)
+    );
+    fs::remove_dir_all(p).unwrap();
+}

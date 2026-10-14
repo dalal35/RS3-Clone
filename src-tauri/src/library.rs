@@ -483,6 +483,38 @@ impl Library {
         primary: &str,
         boundaries: Option<Vec<f64>>,
     ) -> Result<(), String> {
+        if let Some(definition) = self
+            .manifest
+            .merges
+            .iter()
+            .find(|m| m.entry.id == id)
+            .cloned()
+        {
+            let (source, lap) = merging::split_id(primary)?;
+            if !definition.sources.iter().any(|r| r.session_id == source) {
+                return Err("Lap source does not belong to this merge.".into());
+            }
+            self.merge_sources(&definition.sources)?;
+            let session = self.current_shared(&source)?;
+            telemetry::analyze_with_boundaries(
+                &session,
+                &lap,
+                None,
+                "distance",
+                &[],
+                boundaries.as_deref(),
+            )?;
+            let mut next = self.manifest.clone();
+            Self::entry_mut(&mut next, id)?.corners.insert(
+                primary.into(),
+                CornerOverride {
+                    version: 1,
+                    automatic: boundaries.is_none(),
+                    boundaries: boundaries.unwrap_or_default(),
+                },
+            );
+            return self.commit(next);
+        }
         let session = self.current(id)?;
         if let Some(values) = &boundaries {
             telemetry::analyze_with_boundaries(
@@ -518,6 +550,11 @@ impl Library {
         axis: &str,
         channels: &[String],
     ) -> Result<Analysis, String> {
+        if self.manifest.merges.iter().any(|m| m.entry.id == id) {
+            return self
+                .merged_analysis(id, primary, comparison, axis, channels, &[], None)
+                .map(|(a, _)| a);
+        }
         let session = self.current(id)?;
         let boundaries = self
             .entry(id)?
@@ -534,6 +571,30 @@ impl Library {
         id: &str,
         formulas: &[telemetry::expressions::Formula],
     ) -> Result<Vec<Value>, String> {
+        if let Some(definition) = self
+            .manifest
+            .merges
+            .iter()
+            .find(|m| m.entry.id == id)
+            .cloned()
+        {
+            let sources = self.merge_sources(&definition.sources)?;
+            let preview = merging::preview_sources(
+                &sources.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),
+                &definition.sources,
+            )?;
+            let mut result = vec![];
+            for source in &sources {
+                let mut metadata = merging::descriptor(source);
+                let translated = Self::source_formulas(&mut metadata, &preview, formulas);
+                for c in telemetry::expressions::evaluate(&metadata, &translated)? {
+                    if !result.iter().any(|v: &Value| v["id"] == c.id) {
+                        result.push(serde_json::json!({"id":c.id,"name":c.name,"unit":c.unit}));
+                    }
+                }
+            }
+            return Ok(result);
+        }
         let session = self.current(id)?;
         Ok(telemetry::expressions::evaluate(&session, formulas)?
             .into_iter()
@@ -549,6 +610,11 @@ impl Library {
         channels: &[String],
         formulas: &[telemetry::expressions::Formula],
     ) -> Result<Analysis, String> {
+        if self.manifest.merges.iter().any(|m| m.entry.id == id) {
+            return self
+                .merged_analysis(id, primary, comparison, axis, channels, formulas, None)
+                .map(|(a, _)| a);
+        }
         let mut session = self.current(id)?;
         session
             .channels
@@ -572,6 +638,14 @@ impl Library {
         mut request: telemetry::advanced::AdvancedRequest,
         formulas: &[telemetry::expressions::Formula],
     ) -> Result<Value, String> {
+        if self.manifest.merges.iter().any(|m| m.entry.id == id) {
+            request.axis = axis.into();
+            return self
+                .merged_analysis(id, primary, comparison, axis, &[], formulas, Some(&request))
+                .and_then(|(_, value)| {
+                    value.ok_or_else(|| "Advanced analysis unavailable.".into())
+                });
+        }
         // Validate original bytes even on a cache hit; a changed file cannot supply stale analysis.
         let mut session = self.current(id)?;
         request.axis = axis.into();
@@ -759,7 +833,11 @@ impl Library {
                             .iter()
                             .any(|c| c.source_session_id == source && c.source_channel_id == *text)
                     {
-                        *text = merging::qualified_lap_id(source, text);
+                        *text = channels
+                            .iter()
+                            .find(|c| c.source_session_id == source && c.source_channel_id == *text)
+                            .map(|c| c.channel.id.clone())
+                            .unwrap_or_else(|| merging::qualified_lap_id(source, text));
                     } else {
                         for channel in channels.iter().filter(|c| c.source_session_id == source) {
                             *text = text.replace(
@@ -868,5 +946,298 @@ impl Library {
         self.commit(next)?;
         self.advanced_cache.clear();
         self.snapshot()
+    }
+}
+
+impl Library {
+    fn channel_for_source(preview: &MergePreview, source: &Session, id: &str) -> Option<String> {
+        if let Some(origin) = preview.channels.iter().find(|c| c.channel.id == id) {
+            if origin.source_session_id == source.id {
+                return Some(origin.source_channel_id.clone());
+            }
+            if preview
+                .channels
+                .iter()
+                .filter(|c| {
+                    c.source_session_id == origin.source_session_id
+                        && c.channel.name == origin.channel.name
+                        && c.channel.unit == origin.channel.unit
+                })
+                .count()
+                != 1
+            {
+                return None;
+            }
+            let matches: Vec<_> = source
+                .channels
+                .iter()
+                .filter(|c| c.name == origin.channel.name && c.unit == origin.channel.unit)
+                .collect();
+            if matches.len() == 1 {
+                Some(matches[0].id.clone())
+            } else {
+                None
+            }
+        } else {
+            source
+                .channels
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| c.id.clone())
+        }
+    }
+    fn source_formulas(
+        session: &mut Session,
+        preview: &MergePreview,
+        formulas: &[telemetry::expressions::Formula],
+    ) -> Vec<telemetry::expressions::Formula> {
+        formulas.iter().map(|f|{
+            let mut formula=f.clone();
+            for descriptor in &preview.channels {
+                let token=format!("[{}]",descriptor.channel.id);
+                if !formula.expression.contains(&token){continue;}
+                let local=Self::channel_for_source(preview,session,&descriptor.channel.id).unwrap_or_else(||{
+                    // An empty dependency retains its known unit but cannot supply a sample.
+                    // This exists only inside formula evaluation, never as measured telemetry.
+                    let id=format!("unavailable-{}",descriptor.channel.id);
+                    if !session.channels.iter().any(|c|c.id==id){session.channels.push(telemetry::Channel{id:id.clone(),name:descriptor.channel.name.clone(),unit:descriptor.channel.unit.clone(),times:vec![],values:vec![],gaps:vec![]});}
+                    session.warnings.push(format!("{}: formula dependency {} is unavailable or ambiguous in this source.",session.name,descriptor.channel.name));id
+                });
+                formula.expression=formula.expression.replace(&token,&format!("[{local}]"));
+            }formula
+        }).collect()
+    }
+    fn merged_boundaries(
+        &self,
+        definition: &MergeDefinition,
+        primary: &str,
+        source: &str,
+        lap: &str,
+    ) -> Option<Vec<f64>> {
+        match definition.entry.corners.get(primary) {
+            Some(c) if c.version == 1 => {
+                if c.automatic {
+                    None
+                } else {
+                    Some(c.boundaries.clone())
+                }
+            }
+            Some(_) => None,
+            None => self
+                .entry(source)
+                .ok()
+                .and_then(|e| e.corners.get(lap))
+                .filter(|c| c.version == 1 && !c.automatic)
+                .map(|c| c.boundaries.clone()),
+        }
+    }
+    fn merged_analysis(
+        &mut self,
+        id: &str,
+        primary: &str,
+        comparison: Option<&str>,
+        axis: &str,
+        channels: &[String],
+        formulas: &[telemetry::expressions::Formula],
+        advanced: Option<&telemetry::advanced::AdvancedRequest>,
+    ) -> Result<(Analysis, Option<Value>), String> {
+        let definition = self
+            .manifest
+            .merges
+            .iter()
+            .find(|m| m.entry.id == id)
+            .cloned()
+            .ok_or("Merged session no longer exists.")?;
+        let sources = self.merge_sources(&definition.sources)?;
+        let preview = merging::preview_sources(
+            &sources.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),
+            &definition.sources,
+        )?;
+        let (ps, pl) = merging::split_id(primary)?;
+        let comparison_ref = comparison.map(merging::split_id).transpose()?;
+        let resolve = |source: &str, lap: &str| -> Result<usize, String> {
+            sources
+                .iter()
+                .position(|s| s.id == source && s.laps.iter().any(|l| l.id == lap))
+                .ok_or_else(|| "Lap is not part of this merge.".into())
+        };
+        let pi = resolve(&ps, &pl)?;
+        let ci = comparison_ref
+            .as_ref()
+            .map(|(s, l)| resolve(s, l))
+            .transpose()?;
+        let mut prepared: Vec<Option<Session>> = vec![None; sources.len()];
+        if !formulas.is_empty() {
+            for index in [Some(pi), ci].into_iter().flatten() {
+                if prepared[index].is_some() {
+                    continue;
+                }
+                let mut laps = vec![];
+                if index == pi {
+                    laps.push(pl.as_str());
+                }
+                if ci == Some(index) {
+                    laps.push(comparison_ref.as_ref().unwrap().1.as_str());
+                }
+                let mut source = telemetry::selected_session(&sources[index], &laps);
+                let translated = Self::source_formulas(&mut source, &preview, formulas);
+                source
+                    .channels
+                    .extend(telemetry::expressions::evaluate(&source, &translated)?);
+                prepared[index] = Some(source);
+            }
+        }
+        let p_session = prepared[pi].as_ref().unwrap_or(&sources[pi]);
+        let c_session = ci.map(|i| prepared[i].as_ref().unwrap_or(&sources[i]));
+        let p = telemetry::LapSource {
+            session: p_session,
+            lap: p_session.laps.iter().find(|l| l.id == pl).unwrap(),
+        };
+        let c = c_session
+            .zip(comparison_ref.as_ref())
+            .map(|(session, (_, lap))| telemetry::LapSource {
+                session,
+                lap: session.laps.iter().find(|l| l.id == *lap).unwrap(),
+            });
+        let mut requested = channels.to_vec();
+        if let Some(r) = advanced {
+            requested.extend(
+                [
+                    r.x_channel.clone(),
+                    r.y_channel.clone(),
+                    r.hist_channel.clone(),
+                    r.color_channel.clone(),
+                    r.value_filter.as_ref().map(|f| f.channel.clone()),
+                ]
+                .into_iter()
+                .flatten(),
+            );
+        }
+        requested.sort();
+        requested.dedup();
+        let bindings: Vec<_> = requested
+            .iter()
+            .map(|channel| telemetry::ChannelBinding {
+                output_id: channel.clone(),
+                primary_id: Self::channel_for_source(&preview, p_session, channel),
+                comparison_id: c_session
+                    .and_then(|s| Self::channel_for_source(&preview, s, channel)),
+            })
+            .collect();
+        let boundaries = self.merged_boundaries(&definition, primary, &ps, &pl);
+        let mut analysis =
+            telemetry::analyze_sources(p, c, axis, &bindings, boundaries.as_deref())?;
+        for source in prepared.iter().flatten() {
+            analysis.warnings.extend(
+                source
+                    .warnings
+                    .iter()
+                    .filter(|w| w.contains("formula dependency"))
+                    .cloned(),
+            );
+        }
+        let value = advanced
+            .map(|request| {
+                let result =
+                    telemetry::advanced::analyze_sources(p, c, &analysis, request, &bindings)?;
+                let mut value = serde_json::to_value(result).map_err(|e| e.to_string())?;
+                value["sourceContentVersion"] =
+                    Value::String(definition.entry.content_version.clone());
+                let key = serde_json::to_vec(&(
+                    id,
+                    &definition.sources,
+                    primary,
+                    comparison,
+                    axis,
+                    request,
+                    formulas,
+                    &boundaries,
+                ))
+                .map_err(|e| e.to_string())?;
+                value["parameterKey"] = Value::String(format!("{:x}", Sha256::digest(key)));
+                Ok::<_, String>(value)
+            })
+            .transpose()?;
+        analysis.primary.lap_id = primary.into();
+        if let (Some(view), Some(id)) = (&mut analysis.comparison, comparison) {
+            view.lap_id = id.into();
+        }
+        Ok((analysis, value))
+    }
+}
+
+#[cfg(test)]
+mod merge_mapping_tests {
+    use super::*;
+    fn source(id: &str, channels: Value) -> Session {
+        serde_json::from_value(serde_json::json!({"id":id,"source":"","name":id,"driver":"","track":"","recordedAt":"2026-10-14 12:00:00","warnings":[],"laps":[{"id":"lap","number":1,"start":0,"end":1,"duration":1,"complete":true}],"channels":channels})).unwrap()
+    }
+    fn channel(id: &str, name: &str, unit: &str) -> Value {
+        serde_json::json!({"id":id,"name":name,"unit":unit,"times":[0,1],"values":[10,20]})
+    }
+    #[test]
+    fn cross_source_missing_formula_dependencies_and_channel_collisions() {
+        let a = source(
+            "a",
+            serde_json::json!([channel("c1", "RPM", "rpm"), channel("c2", "Throttle", "%")]),
+        );
+        let b = source(
+            "b",
+            serde_json::json!([channel("c1", "Speed", "m/s"), channel("c3", "RPM", "rpm")]),
+        );
+        let refs = vec![
+            SourceRef {
+                session_id: "a".into(),
+                content_version: "a".repeat(64),
+            },
+            SourceRef {
+                session_id: "b".into(),
+                content_version: "b".repeat(64),
+            },
+        ];
+        let preview = merging::preview_sources(&[&a, &b], &refs).unwrap();
+        let rpm = merging::qualified_channel_id("a", "c1");
+        assert_eq!(
+            Library::channel_for_source(&preview, &b, &rpm),
+            Some("c3".into())
+        );
+        let throttle = merging::qualified_channel_id("a", "c2");
+        let formula = telemetry::expressions::Formula {
+            id: "derived".into(),
+            name: "Throttle".into(),
+            expression: format!("[{throttle}]+1{{%}}"),
+        };
+        let mut session = b.clone();
+        let translated = Library::source_formulas(&mut session, &preview, &[formula]);
+        let output = telemetry::expressions::evaluate(&session, &translated).unwrap();
+        assert!(output[0].values.is_empty());
+        assert!(session.warnings.iter().any(|w| w.contains("unavailable")));
+        assert_eq!(b.channels.len(), 2);
+        let mut ambiguous = b.clone();
+        ambiguous.channels.push(ambiguous.channels[1].clone());
+        assert!(Library::channel_for_source(&preview, &ambiguous, &rpm).is_none());
+        let mut incompatible = b.clone();
+        incompatible.channels[1].unit = "m/s".into();
+        assert!(Library::channel_for_source(&preview, &incompatible, &rpm).is_none());
+        let invalid = [telemetry::expressions::Formula {
+            id: "derived".into(),
+            name: "Invalid".into(),
+            expression: format!("[{rpm}]+1{{s}}"),
+        }];
+        let translated = Library::source_formulas(&mut session, &preview, &invalid);
+        assert!(telemetry::expressions::evaluate(&session, &translated).is_err());
+        let cycle = [
+            telemetry::expressions::Formula {
+                id: "f1".into(),
+                name: "First".into(),
+                expression: "[f2]".into(),
+            },
+            telemetry::expressions::Formula {
+                id: "f2".into(),
+                name: "Second".into(),
+                expression: "[f1]".into(),
+            },
+        ];
+        assert!(telemetry::expressions::evaluate(&session, &cycle).is_err());
     }
 }

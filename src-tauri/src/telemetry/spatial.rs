@@ -349,7 +349,14 @@ fn project(
     ))
 }
 
-pub(super) fn align(s: &Session, p: &Lap, c: Option<&Lap>) -> Result<Geometry, String> {
+pub(super) fn align_sources(
+    primary_source: LapSource<'_>,
+    comparison_source: Option<LapSource<'_>>,
+) -> Result<Geometry, String> {
+    let s = primary_source.session;
+    let p = primary_source.lap;
+    let c = comparison_source.map(|c| c.lap);
+    let cs = comparison_source.map(|c| c.session).unwrap_or(s);
     if !p.complete || c.is_some_and(|c| !c.complete) {
         return Err(
             "Spatial alignment unavailable: complete validated lap crossings are required.".into(),
@@ -386,7 +393,7 @@ pub(super) fn align(s: &Session, p: &Lap, c: Option<&Lap>) -> Result<Geometry, S
     let mut accepted = reference.len();
     let mut residual = 0.;
     if let Some(c) = c {
-        let (points, r, u) = fixes(s, c, origin)?;
+        let (points, r, u) = fixes(cs, c, origin)?;
         rejected += r;
         unknown |= u;
         accepted += points.len();
@@ -503,13 +510,15 @@ impl Geometry {
             .filter(|p| p.position.is_finite())
             .collect()
     }
-    pub fn segments(
+    pub fn segments_sources(
         &self,
         s: &Session,
+        cs: &Session,
         p: &Lap,
         c: Option<&Lap>,
         axis: &str,
         ids: &[String],
+        comparison_ids: &[String],
         boundaries: Option<&[f64]>,
     ) -> Result<Vec<Segment>, String> {
         let length = *self.primary.meters.last().unwrap();
@@ -659,7 +668,7 @@ impl Geometry {
                 let comparison = self
                     .comparison
                     .as_ref()
-                    .and_then(|m| metrics(s, m, a, b, ids));
+                    .and_then(|m| metrics(cs, m, a, b, comparison_ids));
                 let delta_seconds = comparison.as_ref().map(|c| primary.elapsed - c.elapsed);
                 let (start, end) = if axis == "distance" {
                     (a, b)

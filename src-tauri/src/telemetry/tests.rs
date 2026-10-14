@@ -588,3 +588,167 @@ fn consecutive_invalid_samples_form_one_outage() {
         "one outage per contiguous invalid run"
     );
 }
+
+#[test]
+fn cross_source_analysis_isolated() {
+    let mut p = sample();
+    p.id = "primary".into();
+    let mut c = sample();
+    c.id = "comparison".into();
+    c.channels[1].values.fill(7000.);
+    let binding = ChannelBinding {
+        output_id: "selected-rpm".into(),
+        primary_id: Some("rpm".into()),
+        comparison_id: Some("rpm".into()),
+    };
+    let a = analyze_sources(
+        LapSource {
+            session: &p,
+            lap: &p.laps[0],
+        },
+        Some(LapSource {
+            session: &c,
+            lap: &c.laps[0],
+        }),
+        "time",
+        &[binding],
+        None,
+    )
+    .unwrap();
+    assert!(a.primary.series[0].values.iter().all(|v| *v == 5000.));
+    assert!(a.comparison.as_ref().unwrap().series[0]
+        .values
+        .iter()
+        .all(|v| *v == 7000.));
+    assert_eq!(a.primary.series[0].channel_id, "selected-rpm");
+    assert_eq!(p.channels[1].values[0], 5000.);
+}
+#[test]
+fn cross_source_spatial_parity() {
+    let p = stadium_session();
+    let mut c = p.clone();
+    c.id = "another".into();
+    for axis in ["time", "distance"] {
+        let original = analyze(&p, "a", Some("b"), axis, &["rpm".into()]).unwrap();
+        let a = analyze_sources(
+            LapSource {
+                session: &p,
+                lap: &p.laps[0],
+            },
+            Some(LapSource {
+                session: &c,
+                lap: &c.laps[1],
+            }),
+            axis,
+            &[ChannelBinding {
+                output_id: "rpm".into(),
+                primary_id: Some("rpm".into()),
+                comparison_id: Some("rpm".into()),
+            }],
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(a).unwrap(),
+            serde_json::to_value(original).unwrap()
+        );
+    }
+}
+#[test]
+fn cross_source_channel_gaps() {
+    let mut p = sample();
+    let mut c = sample();
+    p.track = "Track A".into();
+    c.track = "Track B".into();
+    c.id = "c".into();
+    c.channels.remove(1);
+    let a = analyze_sources(
+        LapSource {
+            session: &p,
+            lap: &p.laps[0],
+        },
+        Some(LapSource {
+            session: &c,
+            lap: &c.laps[0],
+        }),
+        "time",
+        &[ChannelBinding {
+            output_id: "rpm".into(),
+            primary_id: Some("rpm".into()),
+            comparison_id: None,
+        }],
+        None,
+    )
+    .unwrap();
+    assert!(a.comparison.unwrap().series.is_empty());
+    assert!(a.delta.is_none());
+    assert!(a.warnings.iter().any(|w| w.contains("channel")));
+}
+#[test]
+fn cross_source_advanced_provenance() {
+    let p = sample();
+    let mut c = sample();
+    c.id = "c".into();
+    c.channels[1].values.fill(7000.);
+    let psrc = LapSource {
+        session: &p,
+        lap: &p.laps[0],
+    };
+    let csrc = LapSource {
+        session: &c,
+        lap: &c.laps[0],
+    };
+    let bindings = [ChannelBinding {
+        output_id: "rpm".into(),
+        primary_id: Some("rpm".into()),
+        comparison_id: Some("rpm".into()),
+    }];
+    let a = analyze_sources(psrc, Some(csrc), "time", &bindings, None).unwrap();
+    let r = advanced::AdvancedRequest {
+        tool: "histogram".into(),
+        hist_channel: Some("rpm".into()),
+        axis: "time".into(),
+        ..Default::default()
+    };
+    let v = advanced::analyze_sources(psrc, Some(csrc), &a, &r, &bindings).unwrap();
+    assert_eq!(v.laps.len(), 2);
+    assert_eq!(v.laps[0].stats.mean, Some(5000.));
+    assert_eq!(v.laps[1].stats.mean, Some(7000.));
+    assert_ne!(v.laps[0].lap_id, v.laps[1].lap_id);
+    assert_eq!(v.laps[1].points[0].source_time, 0.);
+    assert_eq!(v.laps[0].histogram[0].low, v.laps[1].histogram[0].low);
+    assert_eq!(
+        v.laps[0].histogram.last().unwrap().high,
+        v.laps[1].histogram.last().unwrap().high
+    );
+}
+#[test]
+fn cross_source_equivalent_selected_channels_keep_distinct_output_ids() {
+    let p = sample();
+    let c = sample();
+    let bindings: Vec<_> = ["p-rpm", "c-rpm"]
+        .iter()
+        .map(|id| ChannelBinding {
+            output_id: (*id).into(),
+            primary_id: Some("rpm".into()),
+            comparison_id: Some("rpm".into()),
+        })
+        .collect();
+    let a = analyze_sources(
+        LapSource {
+            session: &p,
+            lap: &p.laps[0],
+        },
+        Some(LapSource {
+            session: &c,
+            lap: &c.laps[0],
+        }),
+        "time",
+        &bindings,
+        None,
+    )
+    .unwrap();
+    assert_eq!(a.primary.series.len(), 2);
+    assert_eq!(a.primary.series[0].channel_id, "p-rpm");
+    assert_eq!(a.primary.series[1].channel_id, "c-rpm");
+}

@@ -4,7 +4,7 @@ import {restoreAdvanced} from './advancedState';
 import type {AdvancedState} from './advancedState';
 import {restoreVideoState,serializeVideoState} from './video/state';
 export interface Zoom {primary:string;comparison:string|null;axis:Axis;min:number;max:number}
-export interface Workspace {contentVersion:string;primary:string;comparison:string|null;channels:string[];axis:Axis;units:'metric'|'imperial';layout:'comfortable'|'compact';zoom:Zoom|null;advanced?:AdvancedState;video?:ReturnType<typeof restoreVideoState>;view?:'telemetry'|'advanced'|'video'}
+export interface Workspace {contentVersion:string;primary:string;comparison:string|null;channels:string[];axis:Axis;units:'metric'|'imperial';layout:'comfortable'|'compact';zoom:Zoom|null;advanced?:AdvancedState;video?:ReturnType<typeof restoreVideoState>;sourceVideos?:Record<string,ReturnType<typeof restoreVideoState>>;view?:'telemetry'|'advanced'|'video'}
 export function restoreWorkspace(s:Session,saved:unknown,contentVersion=''):Workspace {
  const candidate=(saved&&typeof saved==='object'?saved:{}) as Partial<Workspace>;
  const w=contentVersion&&candidate.contentVersion!==contentVersion?{}:candidate;
@@ -12,13 +12,16 @@ export function restoreWorkspace(s:Session,saved:unknown,contentVersion=''):Work
  const defaults=[s.channels.find(c=>/gps.*speed/i.test(c.name))??s.channels.find(c=>/speed/i.test(c.name)&&!/engine/i.test(c.name)),s.channels.find(c=>/rpm|engine.*(speed|revs)/i.test(c.name))].filter(Boolean).map(c=>c!.id);
  const video=restoreVideoState(candidate.video,s,contentVersion);
  if(contentVersion&&candidate.contentVersion!==contentVersion&&candidate.video!==undefined){video.state=null;delete video.futureRaw;if(!video.warnings.length)video.warnings.push('Video mappings were cleared because the telemetry content version changed.');}
+ const sourceVideos=s.merge?Object.fromEntries(s.merge.sources.map(source=>[source.sessionId,restoreVideoState((w.sourceVideos as Record<string,unknown>|undefined)?.[source.sessionId],source.session,source.contentVersion)])):undefined;
+ const activeSource=s.merge?.preview.laps.find(l=>l.id===primary)?.sourceSessionId;
+ const activeVideo=activeSource?sourceVideos?.[activeSource]:video;
  const restoredAdvanced=restoreAdvanced(w.advanced);restoredAdvanced.config.axis=w.axis==='time'?'time':'distance';
  const channels=Array.isArray(w.channels)?[...new Set(w.channels)].filter(id=>s.channels.some(c=>c.id===id)||restoredAdvanced.formulas.some(f=>f.id===id)):defaults.length?defaults:s.channels.slice(0,2).map(c=>c.id);
- return {contentVersion,primary,comparison:w.comparison!==primary&&s.laps.some(l=>l.id===w.comparison)?w.comparison!:null,channels,axis:w.axis==='time'?'time':'distance',units:w.units==='imperial'?'imperial':'metric',layout:w.layout==='compact'?'compact':'comfortable',zoom:w.zoom??null,advanced:restoredAdvanced,...(candidate.video===undefined?{}:{video}),view:w.view==='advanced'?'advanced':w.view==='video'&&video.state?'video':'telemetry'};
+ return {contentVersion,primary,comparison:w.comparison!==primary&&s.laps.some(l=>l.id===w.comparison)?w.comparison!:null,channels,axis:w.axis==='time'?'time':'distance',units:w.units==='imperial'?'imperial':'metric',layout:w.layout==='compact'?'compact':'comfortable',zoom:w.zoom??null,advanced:restoredAdvanced,...(s.merge?{sourceVideos}:candidate.video===undefined?{}:{video}),view:w.view==='advanced'?'advanced':w.view==='video'&&(s.merge||activeVideo?.state)?'video':'telemetry'};
 }
 export function serializeWorkspace(w:Workspace):Record<string,unknown> {
-  const {video,...rest}=w;
-  const saved={...rest,advanced:w.advanced?.readOnly?w.advanced.raw:w.advanced,...(video===undefined?{}:{video:serializeVideoState(video)})};
+  const {video,sourceVideos,...rest}=w;
+  const saved={...rest,advanced:w.advanced?.readOnly?w.advanced.raw:w.advanced,...(video===undefined?{}:{video:serializeVideoState(video)}),...(sourceVideos===undefined?{}:{sourceVideos:Object.fromEntries(Object.entries(sourceVideos).map(([id,value])=>[id,serializeVideoState(value)]))})};
   if(new TextEncoder().encode(JSON.stringify(saved)).length>65536)throw new Error('Workspace exceeds the 64 KiB local storage limit. Remove video mappings or advanced preferences before saving.');
   return saved;
 }

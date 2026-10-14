@@ -1,6 +1,7 @@
 pub mod library;
 pub mod telemetry;
 pub mod video;
+pub mod video_analysis;
 
 use library::{Library, LibrarySnapshot};
 use serde_json::Value;

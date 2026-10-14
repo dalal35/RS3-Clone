@@ -1,6 +1,6 @@
 # Milestone 6: Video synchronization specification
 
-Status: architecture and written specification formally approved by the user on 2026-10-12. Implementation awaits written-plan review.
+Status: architecture and written specification formally approved by the user on 2026-10-12. The implementation plan was formally approved at `63b8145`. Local-video fallback implemented and verified through `fd66499`; packaged native YouTube error 153 remains an unmet full-milestone criterion. See `PROGRESS.md` and the plan execution record for acceptance evidence.
 
 ## Purpose and scope
 

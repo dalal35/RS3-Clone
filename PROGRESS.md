@@ -1,3 +1,37 @@
+# Milestone 6 — Video synchronization · 2026-10-13
+
+**Local-video fallback implemented and verified. Full Milestone 6 acceptance remains unmet because packaged native YouTube playback fails with error 153.** The approved specification and eight-task plan were executed with parent-led Codex Orchestrator and at most two concurrent workers. No cut detection, computer vision or AI analysis was added.
+
+## Implemented
+
+- Optional Video workspace with locally referenced MP4/MOV and the official YouTube IFrame adapter. Pause at a start/finish crossing, choose the matching recorded lap, and select **Sync Here**. Native controls, playback rate, timeline, resize, segment editing, correction nudges and predicted lap crossings remain available.
+- Independent, validated half-open segment mappings use absolute session timestamps. Cuts never imply continuous telemetry; gaps and unrecorded telemetry become unavailable. Repeated footage requires explicit segment selection. Explicit unavailable seeks pause without moving the footage.
+- Asynchronous playback/seek completion, cancellation, bounded clock prediction and drift resets keep charts, GPS and interactions independent of video operations. Playback updates laps/readouts/GPS; explicit graph/GPS selections seek, while hover, comparison, axis, zoom and theme changes do not.
+- Optional bounded/versioned workspace state restores paused, preserves advanced state and unknown future video schemas, and retains mappings when a file is missing or changed. Locate requires confirmation that mappings still apply; metadata does not establish byte identity. Rust authorizes only the validated exact local file using platform-neutral paths.
+
+## Verification and native observations
+
+- Stable product commit `fd66499`: working-tree `npm test` passed 161 tests in 10 files, including four tests belonging to the user's separate speed-display work. A clean `git archive fd66499` snapshot passed 157 tests in nine files, production build and both video browser checks without those uncommitted files.
+- `test:video` (two scripts), `test:plots`, `test:workflow`, `test:advanced` and `test:canvas` passed. Offline Rust passed 84 tests: 66 unit, one advanced, eight library, four real-telemetry and five video integration tests. Existing upstream `binrw 0.14.2` future-compatibility warning remains. Final Tauri macOS build passed; release binary 11.88 MiB.
+- Actual packaged macOS application (`tauri://localhost`) decoded synthetic 60-second, 30-fps H.264 MP4 and genuine MOV fixtures generated with AVFoundation outside the repository. Play/pause, 2× rate and seeks worked. A deliberately corrupt MP4 produced a clear codec error while telemetry remained usable. No original footage was copied or uploaded.
+- Native one-action lap-8 anchor at session 206.53 s, independent segments `[0,30)` and `[30,60)`, cut transition, correction +0.1 s and independent predicted markers were observed. Paused lap-9 seek at 26.585 s remained stable after the late-frame callback regression was corrected. GPS and lower RPM graph clicks sought correctly; hover and comparison preserved video position. Both graph axes worked; unavailable coverage cleared synchronization instead of fabricating a time. Native GPS reports its own approximate timing resolution (~0.68 s for the observed pair).
+- Final build `fd66499` rejected a mapping beyond the last recorded lap as unavailable. Native duplicate import of original 0362 retained two sessions and mappings. Missing synthetic MP4 remained unavailable with both segments intact; Locate plus explicit confirmation restored playback. Before/after persisted JSON showed identical segment arrays, selected segment and preferences, with only the source path changed. Restart restored paused playback, rate 2, panel height 240, two segments and existing formulas/presets/comparison.
+- Independent task reviews and whole-diff acceptance review identified and verified bounded fixes for async races, session switching, graph hover, unavailable seeks, paused native clocks and recorded-lap coverage. No Critical or unresolved Important local-video code findings remained; final acceptance distinguishes the approved fallback from full native YouTube support.
+
+- Final follow-up on 2026-10-14: an initial startup observation stayed on restoration, then resolved without repair; the cause is unconfirmed. A subsequent confirmed quit/relaunch loaded both sessions immediately. The current user-edited YouTube source/mapping was preserved, and the product Video workspace displayed its explicit native error-153 availability message. Earlier synthetic local restart evidence remains separate from this current workspace check.
+
+## Native YouTube limitation and accuracy
+
+Early development WKWebView playback over HTTP worked, but the packaged custom origin failed with YouTube error 153 (missing accepted HTTP Referer/client identity). The user-supplied `TySa_fqgccc&t=1308s` was also tested in an actual packaged official-API probe: the iframe showed error 153, duration stayed unknown and Play failed. A separate HTTP browser official embed reported “Shifter Is Back?”, duration 2637 s, completed seek to 1308 s and advanced to 1316.98 s. That establishes browser availability only; it does not establish native playback or native synchronization.
+
+The approved local-video fallback is retained without a proxy, identity spoofing, stream extraction or weakened security. Native YouTube playback and its end-to-end synchronization/restoration remain an unmet full-milestone criterion. Local timing follows codec/media timestamps, display cadence and manual alignment; frame-level accuracy is not guaranteed. YouTube synchronization is approximate when the platform permits playback. Windows codec/WebView behavior has not been natively verified. Below roughly 356 px available player width, the minimum 200 px height can override the viewport's 16:9 ratio; footage remains contained, a deferred minor layout issue.
+
+## Preservation and delivery
+
+Original XRK SHA-256 values remain unchanged: 0361 `b46294e5cbf4df0ad946b33c1e3810f141c00afc5b2c0784c3a2a2e5ae6abc38`; 0362 `cd749e4279b6fab0c36e8f43ff7b187614c8e63c37ca8777460d09b9b6390a64`. Both remain ignored and untracked; no telemetry, videos, caches or secrets are included in milestone commits. Unrelated uncommitted speed-display changes remain in the working tree. Existing Git history is preserved; delivery uses a normal push to `origin/main`. Work stops at Milestone 6 with the native YouTube limitation above.
+
+---
+
 # Milestone 5 — Advanced telemetry analysis · 2026-10-12
 
 Implemented the approved design from baseline `aba9534`, using Codex Orchestrator with at most two concurrent workers. Independent numerical and integrated reviews found regressions that were corrected with observed failing tests before acceptance. Final review recommends shipping.

@@ -180,7 +180,7 @@ Task dependencies: 1 → adapter implementation in 4; 2 + 3 → 5; 2 → control
 - [x] Request independent read-only acceptance review of the stable diff against spec, including source authorization, preserved dirty work, edited-cut boundaries and async races. Resolve blocking findings with regression tests and rerun affected checks; renew review only when material behavior changes invalidate it.
 - [x] Recheck original telemetry SHA-256 against `PROGRESS.md`, `git ls-files data` remains empty and `git check-ignore` confirms fixtures remain excluded. Never modify anything in `data/` to perform these checks. Confirm no videos/secrets/cache artifacts are staged.
 - [x] Update `PROGRESS.md` with implemented behavior, exact observed checks, native YouTube outcome, accuracy/codec/network limitations and unfinished criteria. Check off only observed completed steps here; do not mark milestone complete if required behavior/checks remain missing.
-- [ ] Run `git diff --check`, inspect staged hunks, commit verified milestone work, and push `origin main` without force when permitted. Existing unrelated speed-display changes remain outside milestone commits. Report any permission/network delivery block precisely.
+- [x] Run `git diff --check`, inspect staged hunks, commit verified milestone work, and push `origin main` without force when permitted. Existing unrelated speed-display changes remain outside milestone commits. Report any permission/network delivery block precisely.
 
 ## Plan self-review and approval handoff
 
@@ -200,3 +200,5 @@ The user has already selected parent-led Codex Orchestrator with at most two con
 - Only milestone hunks were committed in shared files. Unrelated speed-display changes and both original XRKs remain preserved. User authorized normal `origin/main` push; no force push, history rewriting, cut detection, computer vision or AI work.
 
 - 2026-10-14: Final follow-up native startup initially delayed at restoration, resolved without repair (cause unconfirmed); subsequent confirmed quit/relaunch immediately loaded two sessions. Current user-edited YouTube source/mapping preserved; final product workspace displays explicit error 153. Prior synthetic local restoration evidence was not replaced with a claim about the user-edited current state.
+
+- 2026-10-14 delivery: independent final evidence review accepts the local-video fallback (code quality PASS, no unresolved Critical/Important local-video findings); full native YouTube acceptance remains unmet. Documentation bookkeeping was corrected before commit. Normal push succeeded `63b8145..6d15095` to `origin/main`, preserving history and all unrelated dirty paths. Fresh frontend 161 tests and production build passed; no product changes since `fd66499`.

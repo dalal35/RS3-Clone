@@ -28,7 +28,7 @@ The approved local-video fallback is retained without a proxy, identity spoofing
 
 ## Preservation and delivery
 
-Original XRK SHA-256 values remain unchanged: 0361 `b46294e5cbf4df0ad946b33c1e3810f141c00afc5b2c0784c3a2a2e5ae6abc38`; 0362 `cd749e4279b6fab0c36e8f43ff7b187614c8e63c37ca8777460d09b9b6390a64`. Both remain ignored and untracked; no telemetry, videos, caches or secrets are included in milestone commits. Unrelated uncommitted speed-display changes remain in the working tree. Existing Git history is preserved; delivery uses a normal push to `origin/main`. Work stops at Milestone 6 with the native YouTube limitation above.
+Original XRK SHA-256 values remain unchanged: 0361 `b46294e5cbf4df0ad946b33c1e3810f141c00afc5b2c0784c3a2a2e5ae6abc38`; 0362 `cd749e4279b6fab0c36e8f43ff7b187614c8e63c37ca8777460d09b9b6390a64`. Both remain ignored and untracked; no telemetry, videos, caches or secrets are included in milestone commits. Unrelated uncommitted speed-display changes remain in the working tree. Existing Git history is preserved; verified implementation and acceptance documentation were pushed normally to `origin/main` through `6d15095` on 2026-10-14. Work stops at Milestone 6 with the native YouTube limitation above.
 
 ---
 

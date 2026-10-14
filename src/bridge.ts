@@ -49,3 +49,7 @@ export const removeSession=(sessionId:string)=>invoke<import('./types').LibraryS
 export const refreshSession=(sessionId:string)=>invoke<Session>('refresh_library_session',{sessionId});
 export async function locateSession(sessionId:string){const path=await open({multiple:false,directory:false,filters:[{name:'AiM telemetry',extensions:['xrk']}]});return typeof path==='string'?invoke<Session>('locate_library_session',{sessionId,path}):null;}
 export const setCornerBoundaries=(sessionId:string,primaryId:string,boundaries:number[]|null)=>invoke<void>('set_corner_boundaries',{sessionId,primaryId,boundaries});
+
+export const previewMergeSessions=(sessionIds:string[])=>invoke<import('./types').MergePreview>('preview_merge_sessions',{sessionIds});
+export const mergeSessions=(sessionIds:string[],previewVersion:string,acknowledgeWarnings:boolean)=>invoke<Session>('merge_sessions',{sessionIds,previewVersion,acknowledgeWarnings});
+export const unmergeSession=(sessionId:string)=>invoke<import('./types').LibrarySnapshot>('unmerge_session',{sessionId});

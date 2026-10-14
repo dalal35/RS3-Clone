@@ -1,6 +1,7 @@
 use super::*;
 fn sample() -> Session {
     Session {
+        merge: None,
         id: "test".into(),
         source: "".into(),
         name: "".into(),

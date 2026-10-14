@@ -1,5 +1,5 @@
-pub mod merging;
 pub mod library;
+pub mod merging;
 pub mod telemetry;
 pub mod video;
 pub mod video_analysis;
@@ -30,6 +30,35 @@ async fn task<T: Send + 'static>(
     })
     .await
     .map_err(|e| format!("Local library operation failed: {e}"))?
+}
+#[tauri::command]
+async fn preview_merge_sessions(
+    session_ids: Vec<String>,
+    state: State<'_, Store>,
+) -> Result<merging::MergePreview, String> {
+    task(state.inner(), move |library| {
+        library.preview_merge(&session_ids)
+    })
+    .await
+}
+#[tauri::command]
+async fn merge_sessions(
+    session_ids: Vec<String>,
+    preview_version: String,
+    acknowledge_warnings: bool,
+    state: State<'_, Store>,
+) -> Result<Session, String> {
+    task(state.inner(), move |library| {
+        library.merge(&session_ids, &preview_version, acknowledge_warnings)
+    })
+    .await
+}
+#[tauri::command]
+async fn unmerge_session(
+    session_id: String,
+    state: State<'_, Store>,
+) -> Result<LibrarySnapshot, String> {
+    task(state.inner(), move |library| library.unmerge(&session_id)).await
 }
 #[tauri::command]
 async fn library_snapshot(state: State<'_, Store>) -> Result<LibrarySnapshot, String> {
@@ -173,6 +202,9 @@ pub fn run() {
             analyze_advanced,
             validate_formulas,
             library_snapshot,
+            preview_merge_sessions,
+            merge_sessions,
+            unmerge_session,
             load_library_session,
             remove_library_session,
             refresh_library_session,

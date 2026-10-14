@@ -1078,6 +1078,7 @@ mod integration_tests {
         let times: Vec<_> = (0..values.len()).map(|i| 100. + i as f64 * 0.1).collect();
         let end = *times.last().unwrap();
         let s = Session {
+            merge: None,
             id: "s".into(),
             source: "".into(),
             name: "".into(),

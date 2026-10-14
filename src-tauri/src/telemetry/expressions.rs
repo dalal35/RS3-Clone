@@ -11,6 +11,7 @@ mod tests {
     use super::*;
     fn session() -> Session {
         Session {
+            merge: None,
             id: "s".into(),
             source: String::new(),
             name: String::new(),

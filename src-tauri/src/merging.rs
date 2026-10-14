@@ -269,6 +269,7 @@ mod tests {
     use crate::telemetry::{Channel, Lap, Session};
     fn source(id: &str, stamp: &str) -> Session {
         Session {
+            merge: None,
             id: id.into(),
             source: format!("{id}.xrk"),
             name: id.into(),
@@ -360,5 +361,44 @@ mod tests {
         assert!(p.warnings.iter().any(|w| w.contains("duplicate")));
         assert!(p.warnings.iter().any(|w| w.contains("track")));
         assert!(!a.channels[0].times.is_empty());
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeSource {
+    #[serde(flatten)]
+    pub reference: SourceRef,
+    pub session: Session,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeInfo {
+    pub preview: MergePreview,
+    pub sources: Vec<MergeSource>,
+}
+pub fn descriptor(s: &Session) -> Session {
+    Session {
+        id: s.id.clone(),
+        source: s.source.clone(),
+        name: s.name.clone(),
+        driver: s.driver.clone(),
+        track: s.track.clone(),
+        recorded_at: s.recorded_at.clone(),
+        laps: s.laps.clone(),
+        warnings: s.warnings.clone(),
+        merge: None,
+        channels: s
+            .channels
+            .iter()
+            .map(|c| Channel {
+                id: c.id.clone(),
+                name: c.name.clone(),
+                unit: c.unit.clone(),
+                times: vec![],
+                values: vec![],
+                gaps: vec![],
+            })
+            .collect(),
     }
 }

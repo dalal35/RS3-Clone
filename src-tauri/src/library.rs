@@ -1,8 +1,10 @@
 //! Local references and preferences only: raw telemetry stays in its original XRK.
+use crate::merging::{self, MergeInfo, MergePreview, MergeSource, SourceRef};
 use crate::telemetry::{self, Analysis, Session};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
@@ -14,6 +16,8 @@ use std::{
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge_sources: Option<Vec<SourceRef>>,
     pub id: String,
     pub source: String,
     pub name: String,
@@ -32,12 +36,23 @@ pub struct LibraryEntry {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct CornerOverride {
+    #[serde(default)]
+    automatic: bool,
     version: u32,
     boundaries: Vec<f64>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct MergeDefinition {
+    #[serde(flatten)]
+    entry: LibraryEntry,
+    sources: Vec<SourceRef>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Manifest {
+    #[serde(default)]
+    merges: Vec<MergeDefinition>,
     version: u32,
     entries: Vec<LibraryEntry>,
     active_session_id: Option<String>,
@@ -46,6 +61,7 @@ impl Default for Manifest {
     fn default() -> Self {
         Self {
             version: 1,
+            merges: vec![],
             entries: vec![],
             active_session_id: None,
         }
@@ -61,7 +77,7 @@ pub struct LibrarySnapshot {
 pub struct Library {
     directory: PathBuf,
     manifest: Manifest,
-    cache: HashMap<String, Session>,
+    cache: HashMap<String, Arc<Session>>,
     advanced_cache: HashMap<String, Value>,
     warnings: Vec<String>,
 }
@@ -76,7 +92,7 @@ fn read_manifest(path: &Path) -> Result<Manifest, String> {
     // Check version before full decoding: a future schema must never be replaced by an older backup.
     let value: Value =
         serde_json::from_slice(&bytes).map_err(|e| format!("Local library is damaged: {e}"))?;
-    if value.get("version").and_then(Value::as_u64) != Some(1) {
+    if !matches!(value.get("version").and_then(Value::as_u64), Some(1 | 2)) {
         return Err("Unsupported local library version; update Apex Telemetry. Your library has not been changed.".into());
     }
     let manifest: Manifest =
@@ -88,6 +104,30 @@ fn read_manifest(path: &Path) -> Result<Manifest, String> {
         .any(|e| !ids.insert(&e.id) || e.content_version.len() != 64)
     {
         return Err("Local library contains invalid session identities.".into());
+    }
+    for merge in &manifest.merges {
+        if manifest.version < 2
+            || !ids.insert(&merge.entry.id)
+            || merge.sources.len() < 2
+            || merge.entry.content_version.len() != 64
+        {
+            return Err("Local library contains invalid merged identities.".into());
+        }
+        let mut members = std::collections::HashSet::new();
+        for source in &merge.sources {
+            let original = manifest.entries.iter().find(|e| e.id == source.session_id);
+            if !members.insert(&source.session_id)
+                || original.is_none()
+                || source.content_version.len() != 64
+                || !source
+                    .content_version
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit())
+                || original.unwrap().content_version != source.content_version
+            {
+                return Err("Local library contains invalid merged source references.".into());
+            }
+        }
     }
     Ok(manifest)
 }
@@ -198,6 +238,13 @@ impl Library {
             .entries
             .iter()
             .find(|e| e.id == id)
+            .or_else(|| {
+                self.manifest
+                    .merges
+                    .iter()
+                    .find(|m| m.entry.id == id)
+                    .map(|m| &m.entry)
+            })
             .ok_or_else(|| "Session is no longer in the library.".into())
     }
     fn status(entry: &LibraryEntry) -> String {
@@ -219,6 +266,17 @@ impl Library {
                 self.cache.remove(&entry.id);
             }
         }
+        for merge in &self.manifest.merges {
+            let mut entry = merge.entry.clone();
+            entry.merge_sources = Some(merge.sources.clone());
+            entry.status = merge
+                .sources
+                .iter()
+                .map(|r| Self::status(self.entry(&r.session_id).expect("validated reference")))
+                .find(|s| s != "ready")
+                .unwrap_or("ready".into());
+            entries.push(entry);
+        }
         entries.sort_by(|a, b| b.last_used.cmp(&a.last_used));
         Ok(LibrarySnapshot {
             entries,
@@ -228,11 +286,7 @@ impl Library {
     }
     fn touch(&mut self, id: &str) -> Result<(), String> {
         let mut next = self.manifest.clone();
-        let entry = next
-            .entries
-            .iter_mut()
-            .find(|e| e.id == id)
-            .ok_or("Session not found")?;
+        let entry = Self::entry_mut(&mut next, id)?;
         entry.last_used = now();
         next.active_session_id = Some(id.into());
         self.commit(next)
@@ -266,6 +320,7 @@ impl Library {
         let id = format!("session-{digest}");
         let session = parse(&path, &digest, &id)?;
         let entry = LibraryEntry {
+            merge_sources: None,
             id: id.clone(),
             source: path.to_string_lossy().into(),
             name: session.name.clone(),
@@ -284,10 +339,22 @@ impl Library {
         next.entries.push(entry);
         next.active_session_id = Some(id.clone());
         self.commit(next)?;
-        self.cache.insert(id, session.clone());
+        self.cache.insert(id, Arc::new(session.clone()));
         Ok(session)
     }
     fn current(&mut self, id: &str) -> Result<Session, String> {
+        if let Some(merge) = self
+            .manifest
+            .merges
+            .iter()
+            .find(|m| m.entry.id == id)
+            .cloned()
+        {
+            return self.merged_session(&merge);
+        }
+        Ok((*self.current_shared(id)?).clone())
+    }
+    fn current_shared(&mut self, id: &str) -> Result<Arc<Session>, String> {
         let entry = self.entry(id)?.clone();
         match Self::status(&entry).as_str() {
             "missing" => {
@@ -306,6 +373,7 @@ impl Library {
             return Ok(session.clone());
         }
         let session = parse(Path::new(&entry.source), &entry.content_version, id)?;
+        let session = Arc::new(session);
         self.cache.insert(id.into(), session.clone());
         Ok(session)
     }
@@ -315,6 +383,10 @@ impl Library {
         Ok(session)
     }
     pub fn remove(&mut self, id: &str) -> Result<LibrarySnapshot, String> {
+        if self.manifest.merges.iter().any(|m| m.entry.id == id) {
+            return self.unmerge(id);
+        }
+        self.require_unreferenced(id)?;
         self.advanced_cache.clear();
         self.entry(id)?;
         let mut next = self.manifest.clone();
@@ -340,7 +412,7 @@ impl Library {
         entry.last_used = now();
         next.active_session_id = Some(id.into());
         self.commit(next)?;
-        self.cache.insert(id.into(), session.clone());
+        self.cache.insert(id.into(), Arc::new(session.clone()));
         Ok(session)
     }
     pub fn refresh(&mut self, id: &str) -> Result<Session, String> {
@@ -348,6 +420,9 @@ impl Library {
         let entry = self.entry(id)?.clone();
         let path = Path::new(&entry.source);
         let digest = fingerprint(path)?;
+        if digest != entry.content_version {
+            self.require_unreferenced(id)?;
+        }
         if self
             .manifest
             .entries
@@ -373,7 +448,7 @@ impl Library {
         entry.last_used = now();
         next.active_session_id = Some(id.into());
         self.commit(next)?;
-        self.cache.insert(id.into(), session.clone());
+        self.cache.insert(id.into(), Arc::new(session.clone()));
         Ok(session)
     }
     pub fn save_workspace_version(
@@ -398,11 +473,7 @@ impl Library {
         }
         self.entry(id)?;
         let mut next = self.manifest.clone();
-        next.entries
-            .iter_mut()
-            .find(|e| e.id == id)
-            .unwrap()
-            .workspace = Some(workspace);
+        Self::entry_mut(&mut next, id)?.workspace = Some(workspace);
         next.active_session_id = Some(id.into());
         self.commit(next)
     }
@@ -429,6 +500,7 @@ impl Library {
             entry.corners.insert(
                 primary.into(),
                 CornerOverride {
+                    automatic: false,
                     version: 1,
                     boundaries,
                 },
@@ -544,5 +616,257 @@ impl Library {
         }
         self.advanced_cache.insert(key, value.clone());
         Ok(value)
+    }
+}
+
+impl Library {
+    fn entry_mut<'a>(manifest: &'a mut Manifest, id: &str) -> Result<&'a mut LibraryEntry, String> {
+        if let Some(entry) = manifest.entries.iter_mut().find(|e| e.id == id) {
+            return Ok(entry);
+        }
+        manifest
+            .merges
+            .iter_mut()
+            .find(|m| m.entry.id == id)
+            .map(|m| &mut m.entry)
+            .ok_or_else(|| "Session is no longer in the library.".into())
+    }
+    fn require_unreferenced(&self, id: &str) -> Result<(), String> {
+        if self
+            .manifest
+            .merges
+            .iter()
+            .any(|m| m.sources.iter().any(|r| r.session_id == id))
+        {
+            Err(
+                "Unmerge referencing sessions before removing or changing this source recording."
+                    .into(),
+            )
+        } else {
+            Ok(())
+        }
+    }
+    fn merge_sources(&mut self, refs: &[SourceRef]) -> Result<Vec<Arc<Session>>, String> {
+        refs.iter()
+            .map(|r| {
+                if self.entry(&r.session_id)?.content_version != r.content_version {
+                    return Err(
+                        "Merged source content changed. Unmerge before refreshing its recording."
+                            .into(),
+                    );
+                }
+                self.current_shared(&r.session_id).map_err(|e| {
+                    format!(
+                        "Merged source {}: {e}",
+                        self.entry(&r.session_id)
+                            .map(|s| s.name.as_str())
+                            .unwrap_or(&r.session_id)
+                    )
+                })
+            })
+            .collect()
+    }
+    pub fn preview_merge(&mut self, ids: &[String]) -> Result<MergePreview, String> {
+        let mut refs = vec![];
+        for id in ids {
+            if self.manifest.merges.iter().any(|m| m.entry.id == *id) {
+                return Err("Select original sessions; nested merges are not supported.".into());
+            }
+            let e = self.entry(id)?;
+            if !refs.iter().any(|r: &SourceRef| r.session_id == *id) {
+                refs.push(SourceRef {
+                    session_id: id.clone(),
+                    content_version: e.content_version.clone(),
+                });
+            }
+        }
+        let sources = self.merge_sources(&refs)?;
+        merging::preview_sources(
+            &sources.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),
+            &refs,
+        )
+    }
+    fn merged_session(&mut self, definition: &MergeDefinition) -> Result<Session, String> {
+        let sources = self.merge_sources(&definition.sources)?;
+        let preview = merging::preview_sources(
+            &sources.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),
+            &definition.sources,
+        )?;
+        let metadata = sources
+            .iter()
+            .zip(&definition.sources)
+            .map(|(s, r)| MergeSource {
+                reference: r.clone(),
+                session: merging::descriptor(s),
+            })
+            .collect();
+        let mut warnings = preview.warnings.clone();
+        warnings.push("Merged workspace settings are independent. Original workspaces and videos are preserved; incompatible zoom and focused ranges are reset.".into());
+        Ok(Session {
+            id: definition.entry.id.clone(),
+            source: "Virtual merge · original XRKs preserved".into(),
+            name: definition.entry.name.clone(),
+            driver: definition.entry.driver.clone(),
+            track: definition.entry.track.clone(),
+            recorded_at: preview.day.clone(),
+            channels: preview.channels.iter().map(|c| c.channel.clone()).collect(),
+            laps: preview.laps.iter().map(|l| l.lap.clone()).collect(),
+            warnings,
+            merge: Some(MergeInfo {
+                preview,
+                sources: metadata,
+            }),
+        })
+    }
+    pub fn merge(
+        &mut self,
+        ids: &[String],
+        preview_version: &str,
+        acknowledge_warnings: bool,
+    ) -> Result<Session, String> {
+        let preview = self.preview_merge(ids)?;
+        if preview.preview_version != preview_version {
+            return Err("Merge preview is stale. Review the recordings again.".into());
+        }
+        if !preview.warnings.is_empty() && !acknowledge_warnings {
+            return Err("Review and acknowledge merge warnings before merging.".into());
+        }
+        let id = format!("merge-{}-{}", now(), &preview.preview_version[..16]);
+        let initial = self
+            .manifest
+            .active_session_id
+            .as_deref()
+            .filter(|active| ids.iter().any(|id| id == active))
+            .unwrap_or(&ids[0]);
+        let original = self.entry(initial)?.clone();
+        let mut workspace = original
+            .workspace
+            .clone()
+            .filter(|v| v.is_object())
+            .unwrap_or_else(|| serde_json::json!({}));
+        fn remap(
+            value: &mut Value,
+            source: &str,
+            laps: &[merging::MergedLap],
+            channels: &[merging::MergedChannel],
+        ) {
+            match value {
+                Value::String(text) => {
+                    if laps
+                        .iter()
+                        .any(|l| l.source_session_id == source && l.source_lap_id == *text)
+                        || channels
+                            .iter()
+                            .any(|c| c.source_session_id == source && c.source_channel_id == *text)
+                    {
+                        *text = merging::qualified_lap_id(source, text);
+                    } else {
+                        for channel in channels.iter().filter(|c| c.source_session_id == source) {
+                            *text = text.replace(
+                                &format!("[{}]", channel.source_channel_id),
+                                &format!("[{}]", channel.channel.id),
+                            );
+                        }
+                    }
+                }
+                Value::Array(items) => {
+                    for item in items {
+                        remap(item, source, laps, channels);
+                    }
+                }
+                Value::Object(items) => {
+                    for (key, item) in items {
+                        if key != "raw" {
+                            remap(item, source, laps, channels);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(object) = workspace.as_object_mut() {
+            object.remove("video");
+            object.remove("sourceVideos");
+        }
+        remap(&mut workspace, initial, &preview.laps, &preview.channels);
+        workspace["contentVersion"] = Value::String(preview.preview_version.clone());
+        workspace["zoom"] = Value::Null;
+        if let Some(config) = workspace
+            .pointer_mut("/advanced/config")
+            .and_then(Value::as_object_mut)
+        {
+            config.insert("range".into(), Value::Null);
+            config.insert("cornerId".into(), Value::Null);
+            config.insert("excludedIds".into(), serde_json::json!([]));
+        }
+        let mut videos = serde_json::Map::new();
+        for r in &preview.sources {
+            if let Some(video) = self
+                .entry(&r.session_id)?
+                .workspace
+                .as_ref()
+                .and_then(|w| w.get("video"))
+            {
+                videos.insert(r.session_id.clone(), video.clone());
+            }
+        }
+        workspace["sourceVideos"] = Value::Object(videos);
+        if serde_json::to_vec(&workspace)
+            .map_err(|e| e.to_string())?
+            .len()
+            > 65536
+        {
+            return Err("Combined workspace exceeds 64 KiB. Reduce saved video mappings or advanced preferences before merging; originals are unchanged.".into());
+        }
+        let definition = MergeDefinition {
+            entry: LibraryEntry {
+                id: id.clone(),
+                source: String::new(),
+                name: format!("Merged · {} recordings", preview.sources.len()),
+                driver: original.driver,
+                track: original.track,
+                recorded_at: preview.day.clone(),
+                lap_count: preview.laps.len(),
+                channel_count: preview.channels.len(),
+                content_version: preview.preview_version.clone(),
+                last_used: now(),
+                workspace: Some(workspace),
+                corners: HashMap::new(),
+                status: "ready".into(),
+                merge_sources: Some(preview.sources.clone()),
+            },
+            sources: preview.sources,
+        };
+        let session = self.merged_session(&definition)?;
+        let mut next = self.manifest.clone();
+        next.version = 2;
+        next.active_session_id = Some(id);
+        next.merges.push(definition);
+        self.commit(next)?;
+        Ok(session)
+    }
+    pub fn unmerge(&mut self, id: &str) -> Result<LibrarySnapshot, String> {
+        let definition = self
+            .manifest
+            .merges
+            .iter()
+            .find(|m| m.entry.id == id)
+            .cloned()
+            .ok_or("Merged session no longer exists.")?;
+        let mut next = self.manifest.clone();
+        next.merges.retain(|m| m.entry.id != id);
+        if next.active_session_id.as_deref() == Some(id) {
+            next.active_session_id = definition
+                .sources
+                .iter()
+                .find(|r| {
+                    self.entry(&r.session_id)
+                        .is_ok_and(|e| Self::status(e) == "ready")
+                })
+                .map(|r| r.session_id.clone());
+        }
+        self.commit(next)?;
+        self.advanced_cache.clear();
+        self.snapshot()
     }
 }

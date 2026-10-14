@@ -31,6 +31,8 @@ pub struct Lap {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Session {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge: Option<crate::merging::MergeInfo>,
     pub id: String,
     pub source: String,
     pub name: String,
@@ -312,6 +314,7 @@ pub fn parse_session(path: &Path) -> Result<Session, String> {
         .unwrap_or(0)
         .hash(&mut hasher);
     Ok(Session {
+        merge: None,
         id: format!("session-{:x}", hasher.finish()),
         source: path
             .file_name()

@@ -1,3 +1,22 @@
+# Reversible session merging · 2026-10-15
+
+Implemented all six approved tasks using parent-led Codex Orchestrator. Independent acceptance review approved the final corrections with no unresolved material findings.
+
+- Multi-select imported sessions, review actual recording day/source names/lap totals and warnings, then create a virtual merge. Originals remain available; **Unmerge** removes only the definition and merge-local settings. Confirmation revalidates source hashes and serializes pending saves/lifecycle operations.
+- Laps retain source-qualified identities and original times, channels, GPS and sample values. Ordering uses validated recording start plus original lap start. Overlaps and possible duplicates remain visible with warnings; nothing is silently deduplicated. Raw recordings are shared through the existing cache, never concatenated or persisted again.
+- Ordinary plots, spatial lap/corner comparisons, formulas and advanced analysis route each selected lap to its source. Missing channels remain unavailable, including comparison-only graphs with correct roles/colors. Table and map events cannot seek a different source's video. Source switches invalidate stale player/seek callbacks.
+- Lightweight versioned definitions restore after restart and preserve legacy libraries, separate workspaces, corner inheritance/reset and source-specific videos. Missing/changed sources block incomplete analysis, retain recoverable definitions and allow unmerge. Referenced originals cannot be removed or content-refreshed until unmerged; matching Locate recovers missing files.
+
+Verification: 165 working-tree frontend tests and 161 clean feature-only tests passed, as did both production builds. Offline Rust passed 108 tests (75 unit, 33 integration), with doc tests passing. All browser suites passed: plots, workflow, advanced, canvas and both video scripts. Targeted regressions cover merge/unmerge, ordering, persistence/recovery, stale previews and asynchronous operations, source-isolated analysis/video, comparison-only channels and map-event mouse/keyboard guards. Existing upstream `binrw` future-compatibility warning remains.
+
+Final `npm run tauri build` produced the arm64 macOS **Apex Telemetry.app** (12.29 MiB). An isolated verification bundle/library exercised two disposable XRKs outside `data/`: preview/acknowledgement, 24 chronologically ordered laps, cross-source spatial comparison, inherited corner edits, distinct mapped/unmapped video sources, quit/relaunch restoring the merge, and unmerge restoring both originals. Persisted workspaces/corners/video mappings matched before/after, allowing only the existing missing-versus-empty `toolViews` default on reopening an original. The user's normal persisted library was not used for testing.
+
+Limits: reliable recording dates are required. Ambiguous slash dates (including the original fixtures' `10/07/2026`) are rejected; filename dates never supply missing evidence. Logger timezone/clock accuracy cannot be independently established and requires warning acknowledgement. Invalid GPS, missing samples and conflicting units retain existing comparison validity gates. Existing native YouTube error-153 and Windows verification limitations documented below are unchanged.
+
+Preservation: both original XRK SHA-256 values remain unchanged. No `data/` files, raw telemetry, media or test caches enter feature commits. Unrelated uncommitted speed-display changes remain unstaged and intact. No dependencies or unrelated functionality were added.
+
+---
+
 # Milestone 6 — Video synchronization · 2026-10-13
 
 **Local-video fallback implemented and verified. Full Milestone 6 acceptance remains unmet because packaged native YouTube playback fails with error 153.** The approved specification and eight-task plan were executed with parent-led Codex Orchestrator and at most two concurrent workers. No cut detection, computer vision or AI analysis was added.

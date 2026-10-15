@@ -57,6 +57,7 @@ try{
  await page.waitForFunction(()=>!document.querySelector('main').inert&&document.querySelector('.segmented[aria-label="Horizontal axis"] button.active')?.textContent==='Distance');
  assert.equal(await page.getByRole('button',{name:'km/h',exact:true}).count(),1,'Changed source discards incompatible units/workspace');
  // Merge UI exercises real React selection, lifecycle queues and persisted restoration.
+ await page.waitForFunction(()=>{const e=JSON.parse(localStorage.getItem('test-library')).entries.find(e=>e.id==='one');return e.workspace?.contentVersion==='v2'&&e.workspace?.zoom?.primary==='a'&&e.workspace.zoom.axis==='distance';});
  const originals=await page.evaluate(()=>JSON.parse(localStorage.getItem('test-library')).entries.map(e=>({id:e.id,workspace:e.workspace})));
  // Existing restoreAdvanced supplies an empty toolViews default on reopening.
  const normalizeOriginals=entries=>entries.map(original=>{if(original.workspace?.advanced?.config)original.workspace.advanced.config.toolViews??={};return original;});

@@ -12,17 +12,28 @@ try{
   const channels=[{id:'speed',name:'GPS Speed',unit:'km/h',times:[],values:[]},{id:'rpm',name:'RPM',unit:'rpm',times:[],values:[]}];
   w.session={id:'integration',source:'synthetic.xrk',name:'Integration',track:'Synthetic circuit',driver:'Test',recordedAt:'',warnings:[],channels,laps};
   const metrics={elapsed:10,entrySpeed:10,minSpeed:10,exitSpeed:10,channels:[]};
-  w.analysis=args=>{const series=channels.filter(c=>args.channelIds.includes(c.id)).map(c=>({channelId:c.id,name:c.name,unit:c.unit,x:args.axis==='time'?[0,5,10,15,20]:[0,50,100,150,200],values:c.id==='rpm'?[3000,4000,5000,6000,7000]:[0,10,20,30,40]}));
+  w.analysis=args=>{const series=args.channelIds.map(id=>({id,channel:channels.find(c=>c.id===id.split('::').pop())})).filter(item=>item.channel).map(({id,channel:c})=>({channelId:id,name:c.name,unit:c.unit,x:args.axis==='time'?[0,5,10,15,20]:[0,50,100,150,200],values:c.id==='rpm'?[3000,4000,5000,6000,7000]:[0,10,20,30,40]}));
    const view=id=>({lapId:id,duration:20,length:200,mapping:w.noMapping?[]:[{time:0,meters:0},{time:20,meters:id===args.comparisonId?100:200}],series,track:[0,1,2,3,4].map(i=>({x:[0,1,1,0,0][i],y:[0,0,1,1,0][i],position:args.axis==='time'?i*5:i*50,speed:10})),warnings:[]});
    return {primary:view(args.primaryId),comparison:args.comparisonId?view(args.comparisonId):null,alignment:{method:w.nonSpatial?'estimated':'spatial',referenceLength:200,positionUncertaintyM:1,timingUncertaintyS:.1,coverage:1,notes:[]},segments:[0,1].map(i=>({id:`corner${i}`,label:`Corner ${i+1}`,kind:'corner',start:args.axis==='time'?i*10:i*100,end:args.axis==='time'?(i+1)*10:(i+1)*100,startMeters:i*100,endMeters:(i+1)*100,uncertaintyMeters:1,primary:metrics,comparison:null,deltaSeconds:null})),delta:null,warnings:[]};};
   w.video={version:1,sessionId:'integration',contentVersion:'v1',source:{type:'local',path:'/fixture/video.mp4',size:100,modifiedMs:1},segments:[{id:'first',videoStart:0,videoEnd:40,anchorVideoTime:0,anchorTelemetryTime:100,anchorLapId:'lap1',correctionSeconds:0},{id:'cut',videoStart:40,videoEnd:60,anchorVideoTime:40,anchorTelemetryTime:160,anchorLapId:'lap4',correctionSeconds:0}],selectedSegmentId:'first',preferences:{panelHeight:300,playbackRate:1,pausedVideoTime:0}};
   w.entry={...w.session,contentVersion:'v1',status:'ready',channelCount:2,lapCount:4,lastUsed:0,workspace:{contentVersion:'v1',primary:'lap1',comparison:null,axis:'distance',channels:['speed','rpm'],layout:'comfortable',zoom:null,view:'video',video:w.video}};
   const restoreMode=localStorage.getItem('video-fixture-mode');if(restoreMode==='corrupt')w.entry.workspace.video={...w.video,segments:'broken'};if(restoreMode==='future')w.entry.workspace.video={...w.video,version:99};
   w.secondSession={...w.session,id:'second',track:'Second circuit',laps:laps.map(l=>({...l,id:'second-'+l.id,start:l.start+200,end:l.end+200}))};w.secondEntry={...w.entry,...w.secondSession,workspace:{...w.entry.workspace,primary:'second-lap1',video:{...w.video,sessionId:'second',source:{...w.video.source,path:'/fixture/second.mp4'},segments:w.video.segments.map(seg=>({...seg,anchorLapId:'second-'+seg.anchorLapId,anchorTelemetryTime:seg.anchorTelemetryTime+200}))}}};
+  if(restoreMode==='merge'){
+   w.secondSession={...w.secondSession,laps:w.session.laps.map(l=>({...l}))};w.secondEntry={...w.secondEntry,laps:w.secondSession.laps,workspace:{...w.secondEntry.workspace,primary:'lap1',video:{...w.video,sessionId:'second',source:{...w.video.source,path:'/fixture/second.mp4'}}}};
+   const sources=[{sessionId:w.session.id,contentVersion:'v1',session:w.session},{sessionId:w.secondSession.id,contentVersion:'v1',session:w.secondSession}];
+   const mergedLaps=sources.flatMap((s,i)=>s.session.laps.map((lap,j)=>({...lap,id:JSON.stringify([s.sessionId,lap.id]),sourceSessionId:s.sessionId,sourceLapId:lap.id,displayNumber:i*4+j+1})));
+   const mergedChannels=sources.flatMap(s=>s.session.channels.map(c=>({...c,id:`${s.sessionId}::${c.id}`,sourceSessionId:s.sessionId,sourceChannelId:c.id})));
+   const preview={sources:sources.map(({session,...ref})=>ref),day:'2026-10-14',previewVersion:'merge-v1',warnings:[],laps:mergedLaps,channels:mergedChannels};
+   w.mergedSession={...w.session,id:'merged-video',laps:mergedLaps,channels:mergedChannels,merge:{sources,preview}};
+   w.mergedEntry={...w.entry,...w.mergedSession,mergeSources:preview.sources,contentVersion:'merge-v1',lapCount:8,channelCount:4,workspace:{...w.entry.workspace,contentVersion:'merge-v1',primary:mergedLaps[0].id,channels:['integration::speed','integration::rpm'],video:undefined,sourceVideos:{integration:w.entry.workspace.video,second:w.secondEntry.workspace.video}}};
+   w.originalVideos=JSON.stringify([w.entry.workspace.video,w.secondEntry.workspace.video]);
+  }
   w.__TAURI_INTERNALS__={convertFileSrc:path=>`https://asset.localhost/${encodeURIComponent(path)}`,invoke:async(cmd,args)=>{
-   if(cmd==='library_snapshot')return {entries:[w.entry,w.secondEntry],activeSessionId:'integration',warnings:[]};
-   if(cmd==='load_library_session')return args.sessionId==='second'?w.secondSession:w.session;
-   if(cmd==='save_workspace'){w.saves.push(args.workspace);w.entry.workspace=args.workspace;return;}
+   if(cmd==='library_snapshot')return {entries:[...(w.mergedEntry?[w.mergedEntry]:[]),w.entry,w.secondEntry],activeSessionId:w.mergedEntry?'merged-video':'integration',warnings:[]};
+   if(cmd==='load_library_session')return args.sessionId==='merged-video'?w.mergedSession:args.sessionId==='second'?w.secondSession:w.session;
+   if(cmd==='save_workspace'){w.saves.push(args.workspace);(args.sessionId==='merged-video'?w.mergedEntry:args.sessionId==='second'?w.secondEntry:w.entry).workspace=args.workspace;return;}
+   if(cmd==='unmerge_session'){delete w.mergedEntry;delete w.mergedSession;return {entries:[w.entry,w.secondEntry],activeSessionId:'integration',warnings:[]};}
    if(cmd==='authorize_local_video')return {path:args.path,size:100,modifiedMs:1,status:'ready'};
    if(cmd==='analyze_session'){if(w.delayAnalysis)return new Promise(resolve=>w.pending.push({args,resolve:()=>resolve(w.analysis(args))}));return w.analysis(args);}
    if(cmd==='plugin:event|listen')return 1;
@@ -135,5 +146,23 @@ try{
  // Explicit Video entry repairs corrupt/stale state, while opaque future schemas stay read-only.
  await page.evaluate(()=>localStorage.setItem('video-fixture-mode','corrupt'));await page.reload();await page.getByRole('button',{name:'Video',exact:true}).click();await expect(page.getByRole('button',{name:'Attach MP4 / MOV',exact:true})).toBeVisible();await expect(page.getByText(/no mappings were restored/)).toBeVisible();await expect.poll(()=>page.evaluate(()=>window.saves.at(-1)?.video?.source)).toBe(null);
  await page.evaluate(()=>localStorage.setItem('video-fixture-mode','future'));await page.reload();await page.getByRole('button',{name:'Video',exact:true}).click();await expect(page.getByText(/This video workspace uses a newer version/)).toBeVisible();await expect(page.getByRole('button',{name:'Attach MP4 / MOV',exact:true})).toHaveCount(0);await expect.poll(()=>page.evaluate(()=>window.saves.at(-1)?.video?.version)).toBe(99);
+ // Virtual merging uses original-source video contexts even when logger times overlap.
+ await page.evaluate(()=>localStorage.setItem('video-fixture-mode','merge'));await page.reload();
+ await expect(page.getByRole('heading',{name:'Merged · Synthetic circuit'})).toBeVisible();await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
+ await expect(page.getByText('Video source · synthetic.xrk',{exact:true})).toBeVisible();
+ await page.evaluate(()=>window.comparisonEvent=true);await page.getByRole('button',{name:'Compare lap 5',exact:true}).click();await page.getByRole('button',{name:'Advanced',exact:true}).click();await page.getByRole('tab',{name:'Shifts',exact:true}).click();
+ await expect(page.locator('.event-table tbody tr')).toHaveCount(2);const foreignEventSeeks=await page.evaluate(()=>window.seeks.length);await page.locator('.event-table tbody tr').nth(1).getByRole('button').first().click();await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>window.seeks.length),foreignEventSeeks,'A comparison-source event cannot seek the primary source video');
+ await page.getByRole('button',{name:'Video',exact:true}).click();
+ await page.evaluate(()=>{window.delaySeek=true;});await page.locator('.lap-select').nth(1).click();await expect(page.getByRole('status',{name:'Video sync status'})).toHaveText('seeking');
+ await page.evaluate(()=>{window.oldFinish=window.finishSeek;window.oldVideo=document.querySelector('video');window.delaySeek=false;});
+ await page.locator('.lap-select').nth(4).click();await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
+ assert.match(await page.evaluate(()=>document.querySelector('video').src),/second/);await expect(page.locator('.lap-row.selected')).toContainText('05');
+ await page.evaluate(()=>window.oldFinish());await page.waitForTimeout(150);await expect(page.locator('.lap-row.selected')).toContainText('05');
+ assert(await page.evaluate(()=>window.oldVideo!==document.querySelector('video')),'Changing source disposes the old player');
+ await page.getByRole('button',{name:'Play',exact:true}).click();await page.evaluate(()=>window.advance(22));await expect(page.locator('.lap-row.selected')).toContainText('06');
+ await page.getByRole('button',{name:'Pause',exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.mergedEntry.workspace.sourceVideos.second.preferences.pausedVideoTime)).toBe(22);
+ assert.equal(await page.evaluate(()=>JSON.stringify([window.entry.workspace.video,window.secondEntry.workspace.video])),await page.evaluate(()=>window.originalVideos),'Merged video edits leave both original mappings untouched');
+ await page.getByRole('button',{name:'Unmerge',exact:true}).click();await expect(page.getByRole('heading',{name:'Synthetic circuit',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
+ assert.match(await page.evaluate(()=>document.querySelector('video').src),/video.mp4/);assert.equal(await page.evaluate(()=>window.entry.workspace.video.preferences.pausedVideoTime),0);
  assert.deepEqual(errors,[]);console.log('PASS: actual App video hook race/cut reconciliation, retained player, explicit graph/GPS seeks, no hover/zoom/pan/theme/axis/comparison feedback, uncovered hold, pending-seek responsiveness, runtime duration gate, unsupported distance, Advanced event seeks, ambiguity, semantic saves and stale session callbacks (simulated source readiness/clock; native checks separate)');
 }finally{await browser?.close();await server?.close();}

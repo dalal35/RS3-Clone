@@ -6,7 +6,7 @@ try {
  server=await createServer({server:{host:'127.0.0.1',port:0}});await server.listen();
  browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
  const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>{window.bars=[];const original=CanvasRenderingContext2D.prototype.fillRect;CanvasRenderingContext2D.prototype.fillRect=function(...args){window.bars.push(args);return original.apply(this,args);};});
+ await page.addInitScript(()=>{window.bars=[];const original=CanvasRenderingContext2D.prototype.fillRect;CanvasRenderingContext2D.prototype.fillRect=function(...args){window.bars.push(args);window.lastBarColor=this.fillStyle;return original.apply(this,args);};});
  await page.goto(`${server.resolvedUrls.local[0]}tests/canvas.html`);const canvas=page.locator('canvas');await canvas.waitFor();
  await page.waitForFunction(()=>window.bars.length>0);
  const bars=await page.evaluate(()=>window.bars);assert(bars.every(b=>b.every(Number.isFinite)),'all rendered histogram rectangle coordinates must be finite');
@@ -20,6 +20,7 @@ try {
  await canvas.hover({position:{x:500,y:300}});assert.match(await page.locator('.point-inspector').innerText(),/100.*1,000.*20/);
  await canvas.hover({position:{x:200,y:150}});await page.mouse.wheel(0,-100);await page.getByRole('button',{name:'Reset view'}).click();
  for(const [mode,unit] of [['time','s'],['percentage','%']]){await page.evaluate(mode=>window.renderCanvas(mode),mode);await canvas.hover({position:{x:200,y:150}});assert.match(await page.locator('.point-inspector').innerText(),new RegExp(`100 ${unit} · ${mode==='time'?'time':'samples'} weighting`));}
+ await page.evaluate(()=>window.renderCanvas('comparison'));await canvas.hover({position:{x:200,y:150}});await page.locator('.point-inspector').filter({hasText:'Comparison · Lap lap-8'}).waitFor();assert.equal(await page.evaluate(()=>window.lastBarColor),'#ffaa00','A comparison-only histogram keeps the amber role');
  await page.evaluate(()=>window.renderCanvas('scatter'));await page.locator('.render-exclusions').filter({hasText:'2 scatter points'}).waitFor();
  await canvas.click({position:{x:372,y:187}});assert.deepEqual(await page.evaluate(()=>window.cursors),[20],'scatter inspection retains source cursor propagation');
  assert.deepEqual(errors,[]);console.log('PASS: finite log-bin rendering, exact hover/click inspection, exclusion counts, cursor isolation and zoom/reset');

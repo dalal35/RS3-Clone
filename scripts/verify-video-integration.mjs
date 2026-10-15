@@ -13,7 +13,7 @@ try{
   w.session={id:'integration',source:'synthetic.xrk',name:'Integration',track:'Synthetic circuit',driver:'Test',recordedAt:'',warnings:[],channels,laps};
   const metrics={elapsed:10,entrySpeed:10,minSpeed:10,exitSpeed:10,channels:[]};
   w.analysis=args=>{const series=args.channelIds.map(id=>({id,channel:channels.find(c=>c.id===id.split('::').pop())})).filter(item=>item.channel).map(({id,channel:c})=>({channelId:id,name:c.name,unit:c.unit,x:args.axis==='time'?[0,5,10,15,20]:[0,50,100,150,200],values:c.id==='rpm'?[3000,4000,5000,6000,7000]:[0,10,20,30,40]}));
-   const view=id=>({lapId:id,duration:20,length:200,mapping:w.noMapping?[]:[{time:0,meters:0},{time:20,meters:id===args.comparisonId?100:200}],series,track:[0,1,2,3,4].map(i=>({x:[0,1,1,0,0][i],y:[0,0,1,1,0][i],position:args.axis==='time'?i*5:i*50,speed:10})),warnings:[]});
+   const view=id=>({lapId:id,duration:20,length:200,mapping:w.noMapping?[]:[{time:0,meters:0},{time:20,meters:id===args.comparisonId?100:200}],series:w.comparisonOnly&&id===args.primaryId?series.filter(s=>w.onlyMissing||s.channelId.endsWith('rpm')?false:true):series,track:[0,1,2,3,4].map(i=>({x:[0,1,1,0,0][i],y:[0,0,1,1,0][i],position:args.axis==='time'?i*5:i*50,speed:10})),warnings:[]});
    return {primary:view(args.primaryId),comparison:args.comparisonId?view(args.comparisonId):null,alignment:{method:w.nonSpatial?'estimated':'spatial',referenceLength:200,positionUncertaintyM:1,timingUncertaintyS:.1,coverage:1,notes:[]},segments:[0,1].map(i=>({id:`corner${i}`,label:`Corner ${i+1}`,kind:'corner',start:args.axis==='time'?i*10:i*100,end:args.axis==='time'?(i+1)*10:(i+1)*100,startMeters:i*100,endMeters:(i+1)*100,uncertaintyMeters:1,primary:metrics,comparison:null,deltaSeconds:null})),delta:null,warnings:[]};};
   w.video={version:1,sessionId:'integration',contentVersion:'v1',source:{type:'local',path:'/fixture/video.mp4',size:100,modifiedMs:1},segments:[{id:'first',videoStart:0,videoEnd:40,anchorVideoTime:0,anchorTelemetryTime:100,anchorLapId:'lap1',correctionSeconds:0},{id:'cut',videoStart:40,videoEnd:60,anchorVideoTime:40,anchorTelemetryTime:160,anchorLapId:'lap4',correctionSeconds:0}],selectedSegmentId:'first',preferences:{panelHeight:300,playbackRate:1,pausedVideoTime:0}};
   w.entry={...w.session,contentVersion:'v1',status:'ready',channelCount:2,lapCount:4,lastUsed:0,workspace:{contentVersion:'v1',primary:'lap1',comparison:null,axis:'distance',channels:['speed','rpm'],layout:'comfortable',zoom:null,view:'video',video:w.video}};
@@ -38,6 +38,7 @@ try{
    if(cmd==='analyze_session'){if(w.delayAnalysis)return new Promise(resolve=>w.pending.push({args,resolve:()=>resolve(w.analysis(args))}));return w.analysis(args);}
    if(cmd==='plugin:event|listen')return 1;
    if(cmd==='analyze_advanced'){
+    if(w.comparisonOnly&&args.request.tool==='scatter')return {tool:'scatter',xUnit:'rpm',yUnit:'rpm',laps:[{lapId:args.comparisonId,points:[{x:4000,y:1,sourceTime:130,position:50,color:null},{x:7000,y:3,sourceTime:135,position:100,color:null}],stats:{count:2,duration:5,min:4000,max:7000,mean:5500,median:5500,p05:4000,p95:7000},histogram:[],events:[],excludedCount:0}],notes:['Primary channel unavailable']};
     const lap=(id,comparison=false)=>({lapId:id,points:[],stats:{count:0,duration:0,min:null,max:null,mean:null,median:null,p05:null,p95:null},histogram:[],events:[{id:comparison?'comparison-shift':'shift1',lapId:id,kind:'shift',evidence:'synthetic',sourceTime:comparison?130:105,endTime:comparison?131:106,position:args.axis==='time'?(comparison?10:5):50,endPosition:null,rpmBefore:5000,rpmAfter:4000,rpmChange:1000,minRpm:4000,duration:1,recoveryTime:1,cornerId:'corner0'}],excludedCount:0});
     return {tool:'shifts',xUnit:'rpm',yUnit:'',laps:[lap(args.primaryId),...(args.comparisonId&&w.comparisonEvent?[lap(args.comparisonId,true)]:[])],notes:[]};
    }
@@ -152,6 +153,21 @@ try{
  await expect(page.getByText('Video source · synthetic.xrk',{exact:true})).toBeVisible();
  await page.evaluate(()=>window.comparisonEvent=true);await page.getByRole('button',{name:'Compare lap 5',exact:true}).click();await page.getByRole('button',{name:'Advanced',exact:true}).click();await page.getByRole('tab',{name:'Shifts',exact:true}).click();
  await expect(page.locator('.event-table tbody tr')).toHaveCount(2);const foreignEventSeeks=await page.evaluate(()=>window.seeks.length);await page.locator('.event-table tbody tr').nth(1).getByRole('button').first().click();await page.waitForTimeout(150);assert.equal(await page.evaluate(()=>window.seeks.length),foreignEventSeeks,'A comparison-source event cannot seek the primary source video');
+ // Foreign-source map events must retain provenance for mouse and keyboard seeks.
+ const marker=page.locator('.map-event.comparison-event circle');await expect(marker).toHaveCount(1);
+ await marker.click();await page.waitForTimeout(100);assert.equal(await seeks(),foreignEventSeeks,'A foreign map event click must not seek primary video');
+ await marker.focus();await page.keyboard.press('Enter');await page.waitForTimeout(100);assert.equal(await seeks(),foreignEventSeeks,'A foreign map event keyboard activation must not seek primary video');
+ // Missing primary channels leave valid comparison plots/statistics correctly identified.
+ await page.evaluate(()=>window.comparisonOnly=true);await page.getByRole('tab',{name:'Scatter',exact:true}).click();
+ await expect(page.locator('.analysis-statistics .comparison-stat')).toContainText('Comparison · 2 samples');
+ await expect(page.locator('.analysis-statistics .primary-stat')).toHaveCount(0);
+ const scatter=page.locator('.advanced-workspace canvas');await expect(scatter).toBeVisible();await scatter.scrollIntoViewIfNeeded();const scatterBox=await scatter.boundingBox();
+ await page.mouse.move(scatterBox.x+62,scatterBox.y+scatterBox.height-44);await expect(page.locator('.point-inspector')).toContainText('Comparison · X 4,000');
+ await page.getByRole('button',{name:'Time',exact:true}).click();
+ const rpmRow=page.locator('.plot-row').filter({hasText:'RPM'});await expect(rpmRow).toHaveCount(1);await expect(rpmRow).toContainText('Primary unavailable');
+ await page.evaluate(()=>window.onlyMissing=true);await page.getByRole('button',{name:'Distance',exact:true}).click();
+ await expect(page.locator('.plot-row')).toHaveCount(2);await expect(page.locator('.plot-row').first()).toContainText('Primary unavailable');
+ await page.evaluate(()=>{window.comparisonOnly=false;window.onlyMissing=false;});
  await page.getByRole('button',{name:'Video',exact:true}).click();
  await page.evaluate(()=>{window.delaySeek=true;});await page.locator('.lap-select').nth(1).click();await expect(page.getByRole('status',{name:'Video sync status'})).toHaveText('seeking');
  await page.evaluate(()=>{window.oldFinish=window.finishSeek;window.oldVideo=document.querySelector('video');window.delaySeek=false;});

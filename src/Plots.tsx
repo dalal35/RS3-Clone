@@ -5,7 +5,7 @@ import type { Workspace } from './workspace';
 import type { Analysis, Axis, Series, TrackSegment, AdvancedEvent } from './types';
 import { interpolate, mergeSeries } from './telemetry';
 const noEvents:AdvancedEvent[]=[];
-type Row={id:string;name:string;unit:string;primary:Series;comparison?:Series};
+type Row={id:string;name:string;unit:string;primary:Series;comparison?:Series;primaryUnavailable?:boolean};
 export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,events=noEvents,focus=null,layout='comfortable',initialZoom=null,onZoom,onSeek}:{analysis:Analysis;axis:Axis;onCursor:(x:number|null)=>void;resetVersion:number;cursor?:number|null;events?:AdvancedEvent[];focus?:TrackSegment|null;layout?:Workspace['layout'];initialZoom?:{min:number;max:number}|null;onZoom?:(range:{min:number;max:number})=>void;onSeek?:(position:number)=>void}){
   const applyingCursor=useRef(false),sharedCursor=useRef(cursor);sharedCursor.current=cursor;
   const host=useRef<HTMLDivElement>(null),plots=useRef<uPlot[]>([]),callback=useRef(onCursor);callback.current=onCursor;
@@ -13,7 +13,8 @@ export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,e
   const seekCallback=useRef(onSeek);seekCallback.current=onSeek;
   const previousReset=useRef(resetVersion),previousFocus=useRef<TrackSegment|null>(null);
   const readouts=useRef(new Map<string,HTMLElement>());
-  const rows:Row[]=analysis.primary.series.map(s=>({id:s.channelId,name:s.name,unit:s.unit,primary:s,comparison:analysis.comparison?.series.find(c=>c.channelId===s.channelId)}));
+  const rows:Row[]=Array.from(new Map([...analysis.primary.series,...(analysis.comparison?.series??[])].map(s=>[s.channelId,s])).values()).map(s=>{const primary=analysis.primary.series.find(p=>p.channelId===s.channelId);return {id:s.channelId,name:s.name,unit:s.unit,primary:primary??{...s,x:[],values:[],gaps:[]},primaryUnavailable:!primary,comparison:analysis.comparison?.series.find(c=>c.channelId===s.channelId)};});
+  const samples=[...analysis.primary.series,...(analysis.comparison?.series??[])];
   if(analysis.delta)rows.push({id:'__delta',name:analysis.delta.method==='spatial'?'Spatial time delta':'Estimated time delta',unit:'s',primary:{channelId:'__delta',name:analysis.delta.method==='spatial'?'Spatial time delta':'Estimated time delta',unit:'s',...analysis.delta}});
   useEffect(()=>{
     if(!host.current)return;
@@ -43,12 +44,12 @@ export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,e
       (plot as uPlot & {dispose:()=>void}).dispose=()=>{observer.disconnect();el.removeEventListener('pointerdown',down,true);el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',up);el.removeEventListener('keydown',key);plot.destroy();};
       return plot;
     });
-    if(initialZoom){const max=Math.max(...analysis.primary.series.map(s=>s.x.at(-1)??0),1);if(initialZoom.min>=0&&initialZoom.max<=max)plots.current.forEach(p=>p.setScale('x',initialZoom));}
+    if(initialZoom){const max=Math.max(...samples.map(s=>s.x.at(-1)??0),1);if(initialZoom.min>=0&&initialZoom.max<=max)plots.current.forEach(p=>p.setScale('x',initialZoom));}
     initialized=true;
     return()=>{initialized=false;plots.current.forEach(p=>(p as uPlot&{dispose:()=>void}).dispose());plots.current=[];};
   },[analysis,axis,layout,events]);
-  useEffect(()=>{if(previousReset.current===resetVersion)return;previousReset.current=resetVersion;plots.current.forEach(p=>p.setScale('x',{min:analysis.primary.series[0]?.x[0]??0,max:Math.max(...analysis.primary.series.map(s=>s.x[s.x.length-1]??0),analysis.delta?.x.at(-1)??0,1)}));},[resetVersion]);
+  useEffect(()=>{if(previousReset.current===resetVersion)return;previousReset.current=resetVersion;plots.current.forEach(p=>p.setScale('x',{min:Math.min(...samples.map(s=>s.x[0]??0),0),max:Math.max(...samples.map(s=>s.x[s.x.length-1]??0),analysis.delta?.x.at(-1)??0,1)}));},[resetVersion]);
   useEffect(()=>{if(previousFocus.current===focus)return;previousFocus.current=focus;if(focus&&focus.end>focus.start)plots.current.forEach(p=>{p.batch(()=>p.setScale('x',{min:focus.start,max:focus.end}));p.setCursor({left:p.valToPos((focus.start+focus.end)/2,'x'),top:30});});},[focus,analysis]);
   useEffect(()=>{applyingCursor.current=true;try{plots.current.forEach(p=>p.setCursor({left:cursor==null?-10:p.valToPos(cursor,'x'),top:30}));}finally{applyingCursor.current=false;}},[cursor,analysis,axis,layout,events]);
-  return <div ref={host} className="plots">{rows.map(row=><section className="plot-row" key={row.id}><div className="plot-label"><span>{row.name}</span><span className="mono readout" ref={el=>{if(el)readouts.current.set(row.id,el);}} >— {row.unit}</span></div><div data-plot /></section>)}<div className="axis-label">{axis==='distance'?analysis.alignment?.method==='spatial'?'Reference track position · meters':'Distance into lap · meters':analysis.alignment?.method==='spatial'?'Primary lap time at aligned position · seconds':'Time into lap · seconds'}</div></div>;
+  return <div ref={host} className="plots">{rows.map(row=><section className="plot-row" key={row.id}><div className="plot-label"><span>{row.name}{row.primaryUnavailable&&<small> · Primary unavailable</small>}{analysis.comparison&&!row.comparison&&row.id!=='__delta'&&<small> · Comparison unavailable</small>}</span><span className="mono readout" ref={el=>{if(el)readouts.current.set(row.id,el);}} >— {row.unit}</span></div><div data-plot /></section>)}<div className="axis-label">{axis==='distance'?analysis.alignment?.method==='spatial'?'Reference track position · meters':'Distance into lap · meters':analysis.alignment?.method==='spatial'?'Primary lap time at aligned position · seconds':'Time into lap · seconds'}</div></div>;
 }

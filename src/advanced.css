@@ -1,0 +1,35 @@
+.advanced-workspace,.advanced-fieldset,.advanced-nav,.analysis-filters,.analysis-controls,.formula-editor,.formula-picker{min-width:0;max-width:100%}
+.advanced-nav .tool-tabs{flex:1 1 420px}
+.advanced-workspace .preset-select{max-width:100%;flex-wrap:wrap}
+.advanced-workspace .preset-select select{min-width:0;flex:1}
+.analysis-filters>label,.analysis-controls>label{max-width:100%;min-width:0}
+.advanced-workspace .axis-fields{flex-wrap:wrap;min-width:0}
+.traction-calibration{flex-basis:100%;font-size:10px;color:var(--muted)}
+.traction-calibration summary{cursor:pointer;padding:6px 0}
+.analysis-statistics{grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr))}
+.analysis-notes,.analysis-statistics p,.point-inspector,.formula-picker button{overflow-wrap:anywhere}
+.event-table-scroll{max-width:100%;max-height:min(460px,60vh)}
+.surface-footer{gap:12px;flex-wrap:wrap}
+.saved-formulas>div>div{flex-wrap:wrap}
+@container charts (max-width:720px){
+ .advanced-nav{align-items:stretch}
+ .advanced-nav .tool-tabs{flex-basis:100%}
+ .formula-workspace{grid-template-columns:minmax(0,1fr);gap:16px}
+ .formula-picker{border:0;padding:0;max-height:240px}
+ .analysis-filters,.analysis-controls{gap:10px}
+}
+/* Advanced owns its responsive prerequisites, including when the original
+   session sidebar is used without the optional explorer layout. */
+body:has(.advanced-tab){min-width:0}
+.main:has(.advanced-tab){min-width:0}
+.chart-workspace.advanced-tab{container:charts / inline-size}
+.main:has(.advanced-tab) .workspace-heading,
+.main:has(.advanced-tab) .chart-toolbar,
+.main:has(.advanced-tab) .chart-tools,
+.main:has(.advanced-tab) .chart-help{flex-wrap:wrap}
+.main:has(.advanced-tab) .inspector>*{min-width:0}
+@media(max-width:720px){
+ .main:has(.advanced-tab){padding-inline:14px}
+ .main:has(.advanced-tab) .inspector{grid-template-columns:minmax(0,1fr)}
+ .main:has(.advanced-tab) .workspace-heading h1{overflow-wrap:anywhere}
+}

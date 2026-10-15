@@ -1,8 +1,9 @@
 import {useMemo,useEffect,useRef,useState} from 'react';
 import type {Analysis,Axis,TrackSegment,AdvancedEvent} from './types';
 import {interpolate,mapTimeToPrimary,trackGeometry,trackPath,trackMarker} from './telemetry';
+import {inspectableAdvancedPosition} from './advancedIntegration';
 import {moveBoundary} from './workspace';
-export default function Track({analysis,cursor,axis,selected,onSelect,events=[],onCursor,onSeek,editing=false,onEdit}:{analysis:Analysis;cursor:number|null;axis:Axis;selected:string|null;onSelect:(segment:TrackSegment)=>void;events?:AdvancedEvent[];onCursor?:(p:number|null)=>void;onSeek?:(position:number,lapId?:string)=>void;editing?:boolean;onEdit?:(boundaries:number[])=>void}){
+export default function Track({analysis,cursor,axis,selected,onSelect,events=[],onCursor,onSeek,editing=false,onEdit,onInspectEvent}:{analysis:Analysis;cursor:number|null;axis:Axis;selected:string|null;onSelect:(segment:TrackSegment)=>void;events?:AdvancedEvent[];onCursor?:(p:number|null)=>void;onSeek?:(position:number,lapId?:string)=>void;editing?:boolean;onEdit?:(boundaries:number[])=>void;onInspectEvent?:(event:AdvancedEvent)=>void}){
   const geometry=useMemo(()=>{
     const all=[...analysis.primary.track,...(analysis.comparison?.track??[])];
     if(!all.length)return {primary:[],comparison:[]};
@@ -18,7 +19,7 @@ export default function Track({analysis,cursor,axis,selected,onSelect,events=[],
   const adjust=(i:number,meters:number,commit=false)=>{const next=moveBoundary(draftRef.current,i,meters,length);draftRef.current=next;setDraft(next);if(commit)onEdit?.(next);};
   const move=(e:React.PointerEvent<SVGSVGElement>)=>{if(dragging.current==null)return;const svg=e.currentTarget,point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;const matrix=svg.getScreenCTM();if(!matrix)return;const local=point.matrixTransform(matrix.inverse());let nearest=geometry.primary[0],distance=Infinity;for(const p of geometry.primary){const d=(p.x-local.x)**2+(p.y-local.y)**2;if(d<distance){nearest=p;distance=d;}}const meters=axis==='distance'?nearest.position:interpolate(analysis.primary.mapping.map(p=>p.time),analysis.primary.mapping.map(p=>p.meters),nearest.position);if(meters!=null)adjust(dragging.current,meters);};
   const seekPosition=(e:React.MouseEvent<SVGSVGElement>)=>{if(editing||!onSeek||!geometry.primary.length)return;const svg=e.currentTarget,point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;const matrix=svg.getScreenCTM();if(!matrix)return;const local=point.matrixTransform(matrix.inverse());let nearest=geometry.primary[0],distance=Infinity;for(const p of geometry.primary){const d=(p.x-local.x)**2+(p.y-local.y)**2;if(d<distance){nearest=p;distance=d;}}if(Number.isFinite(nearest.position))onSeek(nearest.position);};
-  const inspectEvent=(event:AdvancedEvent)=>{const position=event.position;if(position==null)return;const primaryPosition=event.lapId===analysis.primary.lapId?position:analysis.comparison&&analysis.alignment.method==='spatial'?(axis==='distance'?position:mapTimeToPrimary(position,analysis.comparison.mapping,analysis.primary.mapping)):null;if(primaryPosition!=null){onCursor?.(primaryPosition);onSeek?.(primaryPosition,event.lapId);}};
+  const inspectEvent=(event:AdvancedEvent)=>{const position=inspectableAdvancedPosition(event.lapId,event.position,analysis);if(position!=null){if(onInspectEvent)onInspectEvent(event);else{onCursor?.(position);onSeek?.(position,event.lapId);}}};
   const path=trackPath;
   const marker=(points:ReturnType<typeof trackGeometry>)=>{
     if(cursor==null||!points.length)return null;

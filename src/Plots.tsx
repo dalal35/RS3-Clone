@@ -7,6 +7,7 @@ import { interpolate, mergeSeries } from './telemetry';
 const noEvents:AdvancedEvent[]=[];
 type Row={id:string;name:string;unit:string;primary:Series;comparison?:Series;primaryUnavailable?:boolean};
 export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,events=noEvents,focus=null,layout='comfortable',initialZoom=null,onZoom,onSeek}:{analysis:Analysis;axis:Axis;onCursor:(x:number|null)=>void;resetVersion:number;cursor?:number|null;events?:AdvancedEvent[];focus?:TrackSegment|null;layout?:Workspace['layout'];initialZoom?:{min:number;max:number}|null;onZoom?:(range:{min:number;max:number})=>void;onSeek?:(position:number)=>void}){
+  const applyingZoom=useRef(false);
   const applyingCursor=useRef(false),sharedCursor=useRef(cursor);sharedCursor.current=cursor;
   const host=useRef<HTMLDivElement>(null),plots=useRef<uPlot[]>([]),callback=useRef(onCursor);callback.current=onCursor;
   const zoomCallback=useRef(onZoom);zoomCallback.current=onZoom;
@@ -32,7 +33,7 @@ export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,e
         if(!applyingCursor.current&&nodes[i].querySelector('.u-over')?.matches(':hover'))callback.current(x);
         const readout=readouts.current.get(row.id);
         if(readout)readout.textContent=pairs.map(s=>{const value=x==null?null:interpolate(s.x,s.values,x,s.gaps);return value==null?'—':value.toFixed(row.unit==='rpm'?0:1);}).join(' / ')+' '+row.unit;
-      }],setScale:[u=>{if(initialized&&i===0&&u.scales.x.min!=null&&u.scales.x.max!=null)zoomCallback.current?.({min:u.scales.x.min,max:u.scales.x.max});if(u.scales.x.min!=null&&u.scales.x.max!=null)plots.current.forEach(other=>{if(other!==u&&(other.scales.x.min!==u.scales.x.min||other.scales.x.max!==u.scales.x.max))other.setScale('x',{min:u.scales.x.min!,max:u.scales.x.max!});});}]}},mergeSeries(pairs) as uPlot.AlignedData,nodes[i]);
+      }],setScale:[u=>{if(initialized&&!applyingZoom.current&&i===0&&u.scales.x.min!=null&&u.scales.x.max!=null)zoomCallback.current?.({min:u.scales.x.min,max:u.scales.x.max});if(u.scales.x.min!=null&&u.scales.x.max!=null)plots.current.forEach(other=>{if(other!==u&&(other.scales.x.min!==u.scales.x.min||other.scales.x.max!==u.scales.x.max))other.setScale('x',{min:u.scales.x.min!,max:u.scales.x.max!});});}]}},mergeSeries(pairs) as uPlot.AlignedData,nodes[i]);
       const el=nodes[i];let intent:{x:number;y:number;eligible:boolean}|null=null;let pan:{start:number;min:number;max:number}|null=null;
       const down=(e:PointerEvent)=>{intent={x:e.clientX,y:e.clientY,eligible:e.button===0&&!e.shiftKey};if(e.shiftKey||e.button===1){e.preventDefault();pan={start:e.clientX,min:plot.scales.x.min!,max:plot.scales.x.max!};el.setPointerCapture(e.pointerId);}};
       const move=(e:PointerEvent)=>{if(pan){const dx=(e.clientX-pan.start)/(plot.bbox.width/window.devicePixelRatio)*(pan.max-pan.min);plot.setScale('x',{min:pan.min-dx,max:pan.max-dx});}};
@@ -48,6 +49,14 @@ export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,e
     initialized=true;
     return()=>{initialized=false;plots.current.forEach(p=>(p as uPlot&{dispose:()=>void}).dispose());plots.current=[];};
   },[analysis,axis,layout,events]);
+  useEffect(()=>{
+    if(!initialZoom||!Number.isFinite(initialZoom.min)||!Number.isFinite(initialZoom.max)||initialZoom.max<=initialZoom.min)return;
+    applyingZoom.current=true;
+    try{let changed=false;plots.current.forEach(p=>{if(p.scales.x.min!==initialZoom.min||p.scales.x.max!==initialZoom.max){p.setScale('x',initialZoom);changed=true;}});
+      if(changed){applyingCursor.current=true;try{const position=sharedCursor.current;plots.current.forEach(p=>p.setCursor({left:position==null?-10:p.valToPos(position,'x'),top:30}));}finally{applyingCursor.current=false;}}
+    }
+    finally{applyingZoom.current=false;}
+  },[initialZoom?.min,initialZoom?.max,analysis,axis,layout,events]);
   useEffect(()=>{if(previousReset.current===resetVersion)return;previousReset.current=resetVersion;plots.current.forEach(p=>p.setScale('x',{min:Math.min(...samples.map(s=>s.x[0]??0),0),max:Math.max(...samples.map(s=>s.x[s.x.length-1]??0),analysis.delta?.x.at(-1)??0,1)}));},[resetVersion]);
   useEffect(()=>{if(previousFocus.current===focus)return;previousFocus.current=focus;if(focus&&focus.end>focus.start)plots.current.forEach(p=>{p.batch(()=>p.setScale('x',{min:focus.start,max:focus.end}));p.setCursor({left:p.valToPos((focus.start+focus.end)/2,'x'),top:30});});},[focus,analysis]);
   useEffect(()=>{applyingCursor.current=true;try{plots.current.forEach(p=>p.setCursor({left:cursor==null?-10:p.valToPos(cursor,'x'),top:30}));}finally{applyingCursor.current=false;}},[cursor,analysis,axis,layout,events]);

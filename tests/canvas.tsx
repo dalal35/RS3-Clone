@@ -9,8 +9,8 @@ const config={...defaultAdvanced().config,tool:'histogram' as const,xScale:'log'
 (window as any).cursors=[];
 const root=createRoot(document.getElementById('root')!);
 (window as any).renderCanvas=(mode='samples')=>{
- const scatter=mode==='scatter';
- const data=scatter?{...result,tool:'scatter',laps:[{...result.laps[0],histogram:[],points:[{x:10,y:10,sourceTime:1,position:20,color:null},{x:0,y:10,sourceTime:2,position:null,color:null},{x:10,y:-1,sourceTime:3,position:null,color:null}]}]}:mode==='comparison'?{...result,laps:result.laps.map(lap=>({...lap,lapId:'lap-8'}))}:result;
- root.render(<div style={{width:700,'--muted':'#999','--grid':'#333','--cyan':'#0ff','--amber':'#fa0'} as React.CSSProperties}><AnalysisCanvas primaryLapId="lap-7" result={data} config={{...config,percentage:mode==='percentage',weighting:mode==='time'?'time':'samples'}} cursor={null} onCursor={v=>(window as any).cursors.push(v)}/></div>);
+ const scatter=mode==='scatter'||mode==='traction';
+ const data=scatter?{...result,tool:mode==='traction'?'traction':'scatter',laps:[{...result.laps[0],histogram:[],points:[{x:10,y:10,sourceTime:1,position:20,color:null},{x:0,y:10,sourceTime:2,position:null,color:null},{x:10,y:-1,sourceTime:3,position:null,color:null}]}]}:mode==='comparison'?{...result,laps:result.laps.map(lap=>({...lap,lapId:'lap-8'}))}:result;
+ root.render(<div style={{width:'min(700px, 100%)','--muted':'#999','--grid':'#333','--cyan':'#0ff','--amber':'#fa0'} as React.CSSProperties}><AnalysisCanvas primaryLapId="lap-7" result={data} config={{...config,xScale:mode==='traction'?'linear':config.xScale,yScale:mode==='traction'?'linear':config.yScale,percentage:mode==='percentage',weighting:mode==='time'?'time':'samples'}} cursor={null} onCursor={v=>(window as any).cursors.push(v)}/></div>);
 };
 (window as any).renderCanvas();

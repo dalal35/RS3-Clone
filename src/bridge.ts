@@ -15,7 +15,7 @@ export async function authorizeLocalVideo(path: string): Promise<LocalVideoInfo>
   return invoke<LocalVideoInfo>('authorize_local_video', { path });
 }
 export async function importPaths(paths: string[]): Promise<Session[]> {
-  if (!isNative) throw new Error('Open the native macOS app to import XRK files.');
+  if (!isNative) throw new Error('Open the desktop app to import XRK files.');
   const results: Session[] = [];
   const errors: string[] = [];
   for (const path of paths) {
@@ -27,7 +27,7 @@ export async function importPaths(paths: string[]): Promise<Session[]> {
   return results;
 }
 export async function importFiles(): Promise<Session[]> {
-  if (!isNative) throw new Error('Open the native macOS app to import XRK files.');
+  if (!isNative) throw new Error('Open the desktop app to import XRK files.');
   const selected = await open({ multiple: true, directory: false, filters: [{ name: 'AiM telemetry', extensions: ['xrk'] }] });
   return selected ? importPaths(Array.isArray(selected) ? selected : [selected]) : [];
 }

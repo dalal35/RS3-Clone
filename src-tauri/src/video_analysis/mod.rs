@@ -157,16 +157,22 @@ pub struct VideoAnalysisProgress {
 }
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(any(windows, test))]
+mod windows_pixels;
 #[cfg(target_os = "macos")]
 use macos::Decoder;
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows::Decoder;
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 struct Decoder;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl Decoder {
     fn open(_: &Path) -> Result<Self> {
         Err(VideoAnalysisError::new(
             ErrorKind::UnsupportedPlatform,
-            "Local frame analysis currently requires macOS",
+            "Local frame analysis requires macOS or Windows",
         ))
     }
     fn metadata(&self) -> VideoAnalysisMetadata {
@@ -192,6 +198,9 @@ fn open(path: &Path, cancel: &CancellationToken) -> Result<Decoder> {
             "Local video is missing",
         ));
     }
+    #[cfg(windows)]
+    let decoder = Decoder::open(Path::new(&info.path), cancel)?;
+    #[cfg(not(windows))]
     let decoder = Decoder::open(Path::new(&info.path))?;
     cancel.check()?;
     Ok(decoder)

@@ -1,52 +1,9 @@
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "windows"))]
 use apex_telemetry::video_analysis::*;
-use std::{
-    path::PathBuf,
-    sync::atomic::{AtomicUsize, Ordering},
-};
-static NEXT: AtomicUsize = AtomicUsize::new(0);
-fn fixture() -> PathBuf {
-    fixture_mode("")
-}
-fn fixture_mode(mode: &str) -> PathBuf {
-    static GENERATOR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-    let generator = GENERATOR.get_or_init(|| {
-        let exe = std::env::temp_dir().join(format!("apex-fixture-{}", std::process::id()));
-        assert!(std::process::Command::new("clang")
-            .args([
-                "-fobjc-arc",
-                "-framework",
-                "Foundation",
-                "-framework",
-                "AVFoundation",
-                "-framework",
-                "CoreVideo",
-                "-framework",
-                "CoreMedia",
-                "-framework",
-                "CoreGraphics",
-                "tests/fixtures/generate.m",
-                "-o"
-            ])
-            .arg(&exe)
-            .status()
-            .unwrap()
-            .success());
-        exe
-    });
-    let path = std::env::temp_dir().join(format!(
-        "apex-video-{}-{}.mov",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    let mut command = std::process::Command::new(generator);
-    command.arg(&path);
-    if !mode.is_empty() {
-        command.arg(mode);
-    }
-    assert!(command.status().unwrap().success());
-    path
-}
+use std::path::PathBuf;
+#[path = "support/video_fixtures.rs"]
+mod video_fixtures;
+use video_fixtures::{fixture, fixture_mode};
 #[test]
 fn real_vfr_metadata_frames_sampling_and_cleanup() {
     let path = fixture();
@@ -57,7 +14,13 @@ fn real_vfr_metadata_frames_sampling_and_cleanup() {
         metadata.duration_seconds >= 3.3 && metadata.duration_seconds <= 3.5,
         "{metadata:?}"
     );
+    #[cfg(target_os = "macos")]
     assert!(metadata.track_start_seconds.abs() < 0.001, "{metadata:?}");
+    #[cfg(windows)]
+    assert!(
+        (metadata.track_start_seconds - 2.0).abs() < 0.001,
+        "{metadata:?}"
+    );
     for _ in 0..12 {
         let frame = extract_frame(
             &path,
@@ -394,5 +357,74 @@ fn decimal_sampling_grid_preserves_every_exact_cfr_sample() {
     )
     .unwrap();
     assert_eq!(times, vec![0.4]);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn native_windows_decoder_contract_runs() {
+    let path = fixture();
+    let metadata = inspect(&path, &CancellationToken::default()).unwrap();
+    assert_eq!(metadata.timebase_timescale, 10_000_000);
+    let renamed = path.with_extension("renamed.mp4");
+    std::fs::rename(&path, &renamed).unwrap();
+    std::fs::remove_file(renamed).unwrap();
+}
+#[cfg(windows)]
+#[test]
+fn h264_b_frames_keep_actual_ordered_presentation_timestamps() {
+    let path = fixture_mode("bframes");
+    let mut times = vec![];
+    sample_frames(
+        &path,
+        SamplingOptions {
+            interval_seconds: 0.1,
+            ..Default::default()
+        },
+        &CancellationToken::default(),
+        |frame| {
+            assert_eq!(frame.timestamp_timescale, 10_000_000);
+            assert_eq!(
+                frame.timestamp_seconds,
+                frame.timestamp_value as f64 / 10_000_000.
+            );
+            times.push(frame.timestamp_seconds);
+            Ok(())
+        },
+        |_| {},
+    )
+    .unwrap();
+    assert_eq!(times, (0..30).map(|i| i as f64 / 10.).collect::<Vec<_>>());
+    std::fs::remove_file(path).unwrap();
+}
+#[cfg(windows)]
+#[test]
+fn cancellation_during_skipped_scan_releases_reader() {
+    let path = fixture_mode("long");
+    let cancel = CancellationToken::default();
+    let signalled = cancel.clone();
+    let (send, receive) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        receive.recv().unwrap();
+        signalled.cancel();
+    });
+    let mut send = Some(send);
+    let error = sample_frames(
+        &path,
+        SamplingOptions {
+            start_seconds: 59.,
+            ..Default::default()
+        },
+        &cancel,
+        |_| Ok(()),
+        |_| {
+            if let Some(send) = send.take() {
+                send.send(()).unwrap();
+            }
+        },
+    )
+    .unwrap_err();
+    thread.join().unwrap();
+    assert_eq!(error.kind, ErrorKind::Cancelled);
     std::fs::remove_file(path).unwrap();
 }

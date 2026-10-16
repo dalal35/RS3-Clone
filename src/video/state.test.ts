@@ -14,6 +14,12 @@ describe('video state restoration', () => {
     expect(serializeVideoState(restore(undefined))).toBeUndefined();
     expect(defaultVideoState(session, 'source-1')).toEqual({ version: 1, sessionId: session.id, contentVersion: 'source-1', source: null, segments: [], selectedSegmentId: null, preferences: { panelHeight: 400, playbackRate: 1, pausedVideoTime: 0 } });
   });
+  it.each(["C:\\Telemetry café\\走行 [final].MP4", "\\\\server\\laps\\走行 clip.mov", "\\\\?\\C:\\Telemetry\\走行.MP4", "\\\\?\\UNC\\server\\laps\\走行.mov"])('preserves a Windows video reference and mapping across serialization: %s', path => {
+    const saved = { ...valid(), source: { ...local, path } };
+    const restored = restore(saved);
+    expect(restored.state?.source).toEqual({ ...local, path });
+    expect(serializeVideoState(restored)).toEqual(saved);
+  });
   it('round trips only persistent fields and always restores paused', () => {
     const result = restore({ ...valid(), playing: true, objectUrl: 'blob:secret', timer: 9, preferences: { ...valid().preferences, playing: true } });
     expect(result).toEqual({ state: valid(), warnings: [] });

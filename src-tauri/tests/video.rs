@@ -94,3 +94,21 @@ fn video_canonicalizes_links_and_rejects_non_video_targets() {
     symlink(private, &invalid).unwrap();
     assert!(inspect_local_video(&invalid).is_err());
 }
+
+#[cfg(windows)]
+#[test]
+fn canonical_extended_windows_path_can_be_reauthorized_and_serialized() {
+    let root = Sandbox::new("extended");
+    let path = root.0.join("走行 café [final].MP4");
+    fs::write(&path, b"metadata fixture").unwrap();
+    let first = inspect_local_video(&path).unwrap();
+    assert!(
+        first.path.starts_with(r"\\?\"),
+        "canonical path: {}",
+        first.path
+    );
+    let second = inspect_local_video(std::path::Path::new(&first.path)).unwrap();
+    assert_eq!(second.path, first.path);
+    let wire = serde_json::to_value(second).unwrap();
+    assert_eq!(wire["path"], first.path);
+}

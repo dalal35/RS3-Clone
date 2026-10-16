@@ -1,5 +1,6 @@
+import {launchBrowser} from './browser.mjs';
 // Actual App, IPC simulation backed by read-only real-XRK Rust diagnostic outputs.
-import {chromium,expect} from '@playwright/test';
+import {expect} from '@playwright/test';
 import {createServer} from 'vite';
 import {readdirSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
@@ -9,8 +10,8 @@ assert(fixture,'Place real XRK fixtures in data/ before running advanced checks.
 const data=JSON.parse(execFileSync('cargo',['run','--offline','--manifest-path','src-tauri/Cargo.toml','--example','advanced_check','--',`data/${fixture}`],{encoding:'utf8',maxBuffer:64*1024*1024,stdio:['ignore','pipe','inherit']}));
 let server,browser;
 try {
- server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:{ignored:['**/.tools/**','**/.superpowers/**']}}});await server.listen();
- browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+ server=await createServer({optimizeDeps:{entries:['index.html','tests/*.html']},server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
+ browser=await launchBrowser();
  const page=await browser.newPage({viewport:{width:1600,height:1100}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(d=>{
   window.isTauri=true;window.__advancedCalls=[];window.__validationPending=[];window.__analysisPending=[];

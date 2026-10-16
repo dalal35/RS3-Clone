@@ -17,3 +17,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10.9"
 libxrk = { git = "https://github.com/m3rlin45/libxrk", rev = "4e44d38debc9445b8e5446c9b7a241f5730ac920", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Win32_Media_MediaFoundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell_PropertiesSystem"] }
+tauri-plugin-window-state = "2"
+
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "0.62.2", features = ["Win32_System_Ole"] }

@@ -1,8 +1,8 @@
+import {launchBrowser} from './browser.mjs';
 // A local-only interaction check using real XRK analysis. No fixture data is uploaded.
-import { chromium } from '@playwright/test';
 import { createServer } from 'vite';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import assert from 'node:assert/strict';
 const fixture=readdirSync('data').filter(name=>name.toLowerCase().endsWith('.xrk')).sort()[0];
 assert(fixture,'Place real XRK fixtures in data/ before running the plot integration check.');
@@ -11,15 +11,17 @@ const output=execFileSync('cargo',['run','--manifest-path','src-tauri/Cargo.toml
 writeFileSync('.tools/analysis.json',output);
 let server,browser;
 try {
- server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false}});await server.listen();
- const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
- browser=await chromium.launch({headless:true,...(existsSync(chrome)?{executablePath:chrome}:{})});
+ server=await createServer({optimizeDeps:{entries:['index.html','tests/*.html']},server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
+ browser=await launchBrowser();
  const page=await browser.newPage({viewport:{width:1100,height:950}});page.setDefaultTimeout(10000);
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto(`${server.resolvedUrls.local[0]}tests/plots.html`);
  const over=page.locator('.u-over').first();await over.waitFor();const box=await over.boundingBox();
  const ranges=()=>page.evaluate(()=>window.getPlotRanges());
  const before=await ranges();
+ await page.getByRole('button',{name:'Restore incompatible zoom',exact:true}).click();
+ await page.waitForTimeout(100);
+ assert.deepEqual((await ranges()).map(({min,max})=>({min,max})),before.map(({min,max})=>({min,max})),'Restored range outside the current analysis domain is ignored');
  await page.mouse.move(box.x+box.width*.2,box.y+30);await page.mouse.down();await page.mouse.move(box.x+box.width*.7,box.y+30,{steps:12});await page.mouse.up();
  await page.waitForTimeout(100);const zoomed=await ranges();
  assert(zoomed[0].max-zoomed[0].min<(before[0].max-before[0].min)*.7,'Drag zoom must narrow the visible range');
@@ -58,8 +60,25 @@ try {
  await page.getByRole('button',{name:'Edit boundaries',exact:true}).click();assert.equal(await page.getByRole('slider').count(),0,'Done hides editing handles');
  await page.mouse.move(box.x+box.width*.2,box.y+30);await page.mouse.down();await page.mouse.move(box.x+box.width*.6,box.y+30,{steps:8});await page.mouse.up();await page.waitForTimeout(50);
  const saved=await ranges();await page.getByRole('button',{name:'Density',exact:true}).click();await page.waitForTimeout(50);const restored=await ranges();assert.equal(restored[0].min,saved[0].min,'Density changes preserve zoom');assert.equal(restored[0].max,saved[0].max,'Density changes preserve zoom end');
+ await page.getByRole('button',{name:'Delta only',exact:true}).click();await page.waitForTimeout(100);
+ assert.equal((await ranges()).length,1,'Deselecting all channels retains the delta-only graph');
+ await page.getByRole('button',{name:'Restore delta zoom',exact:true}).click();await page.waitForTimeout(100);
+ const deltaZoom=await ranges();
+ assert.equal(deltaZoom[0].min,10,'Delta-only graph restores valid zoom start');
+ assert.equal(deltaZoom[0].max,20,'Delta-only graph restores valid zoom end');
+ await page.getByRole('button',{name:'Density',exact:true}).click();await page.waitForTimeout(100);
+ assert.deepEqual((await ranges()).map(({min,max})=>({min,max})),[{min:10,max:20}],'Delta-only valid zoom survives chart recreation');
+ await page.getByRole('button',{name:'Partial channel',exact:true}).click();await page.waitForTimeout(100);
+ assert.equal((await ranges()).length,2,'Partial ordinary channel and delta render together');
+ await page.getByRole('button',{name:'Restore delta zoom',exact:true}).click();await page.waitForTimeout(100);
+ const partialZoom=(await ranges()).map(({min,max})=>({min,max}));
+ assert.deepEqual(partialZoom,[{min:10,max:20},{min:10,max:20}],'Valid delta-domain zoom beyond the short ordinary channel restores on both graphs');
+ await page.getByRole('button',{name:'Density',exact:true}).click();await page.waitForTimeout(100);
+ assert.deepEqual((await ranges()).map(({min,max})=>({min,max})),partialZoom,'Delta-domain zoom survives recreation with partial ordinary channel');
+ await page.getByRole('button',{name:'Restore incompatible zoom',exact:true}).click();await page.waitForTimeout(100);
+ assert.deepEqual((await ranges()).map(({min,max})=>({min,max})),partialZoom,'Bounds still reject a restored range beyond every ordinary and delta sample');
  assert.deepEqual(errors,[]);
- console.log(`PASS: real-XRK plots (${before.length} channels): synchronized zoom, pan, reset, cursor, track-section focus, editable boundary drag/keyboard and layout zoom retention`);
+ console.log(`PASS: real-XRK plots (${before.length} channels): synchronized zoom, pan, reset, cursor, incompatible restored-range rejection, valid delta-only/partial-channel zoom restoration, track-section focus, editable boundary drag/keyboard and layout zoom retention`);
 } finally {
  await browser?.close();await server?.close();unlinkSync('.tools/analysis.json');
 }

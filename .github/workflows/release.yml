@@ -1,75 +1,149 @@
-name: Release macOS
+name: Release macOS and Windows
 
 on:
   push:
+    branches:
+      - 'fix/dedicated-advanced-workspace' # Build-only validation; publisher requires a tag.
     tags:
       - 'v*'
+  workflow_dispatch: # Build/test/artifacts only; never publishes a release.
 
 permissions:
-  contents: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: macos-15 # Apple Silicon runner
+  macos:
+    name: Apple Silicon build and tests
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-
-      - name: Check release version
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          import assert from 'node:assert/strict';
-          const json = path => JSON.parse(readFileSync(path, 'utf8'));
-          const version = json('package.json').version;
-          const cargoPackage = readFileSync('src-tauri/Cargo.toml', 'utf8')
-            .split('[package]')[1].split('\n[')[0];
-          const cargoVersion = cargoPackage.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
-          assert.equal(json('src-tauri/tauri.conf.json').version, version);
-          assert.equal(cargoVersion, version);
-          assert.equal(process.env.GITHUB_REF_NAME, `v${version}`,
-            'Tag must match the app version in package.json, tauri.conf.json and Cargo.toml');
-          NODE
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Test frontend
-        run: npm test
-
-      # Real-XRK integration tests require private, untracked data/ fixtures.
-      # These suites use synthetic data and generated native video fixtures.
-      - name: Test Rust and native video
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test video --test video_analysis
-
-      - name: Build and publish Apple Silicon installer
-        uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: '-'
+      - uses: Swatinem/rust-cache@v2
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Apex Telemetry v__VERSION__ Beta
-          releaseBody: |
-            Download the .dmg for Apple Silicon Macs running macOS 13 or later.
-            Drag Apex Telemetry into Applications. This ad-hoc signed app is not notarized;
-            macOS may require approval in System Settings > Privacy & Security > Open Anyway.
-            See the README for installation details and Gatekeeper limitations.
-          releaseDraft: false
-          prerelease: true
-          generateReleaseNotes: true
-          args: --target aarch64-apple-darwin --bundles app,dmg -- --locked
-          uploadUpdaterJson: false
-          uploadUpdaterSignatures: false
+          workspaces: src-tauri -> target
+          key: macos-aarch64
+      - name: Verify version and install dependencies
+        run: |
+          node scripts/verify-release-version.mjs
+          npm ci
+          npx playwright install chromium
+      - name: Shared frontend and release-policy tests
+        run: |
+          npm test
+          npm run test:release
+      # Private ignored XRKs are deliberately not uploaded into CI.
+      - name: Native Rust, persistence and real media tests
+        run: |
+          node scripts/verify-native-video-tests.mjs
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test persistence --test video --test video_analysis
+      - name: Browser workflows (simulated IPC, not native GUI acceptance)
+        run: |
+          npm run test:workflow
+          npm run test:canvas
+          npm run test:video
+      - name: Build Apple Silicon app and DMG
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+        run: npm run build:mac
+      - name: Inspect and stage native artifacts
+        run: node scripts/stage-release-artifacts.mjs macos "${{ runner.temp }}/apex-release"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apex-macos
+          path: ${{ runner.temp }}/apex-release/macos/
+          if-no-files-found: error
+          compression-level: 0
+
+  windows:
+    name: Windows x64 MSVC build and tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: windows-x64-msvc
+      - name: Verify version and install dependencies
+        run: |
+          node scripts/verify-release-version.mjs
+          npm ci
+          npx playwright install chromium
+      - name: Shared frontend and release-policy tests
+        run: |
+          npm test
+          npm run test:release
+      - name: Native Windows compilation and real media tests
+        run: |
+          cargo check --locked --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
+          node scripts/verify-native-video-tests.mjs
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test persistence --test video --test video_analysis
+      - name: Browser workflows (simulated IPC, not native GUI acceptance)
+        run: |
+          npm run test:workflow
+          npm run test:canvas
+          npm run test:video
+      - name: Build per-user Windows x64 NSIS installer
+        run: npm run build:windows
+      - name: Inspect x64 GUI executable, NSIS contents and notices
+        run: node scripts/stage-release-artifacts.mjs windows "${{ runner.temp }}/apex-release"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apex-windows
+          path: ${{ runner.temp }}/apex-release/windows/
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Publish complete beta release
+    needs: [macos, windows]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: apex-macos
+          path: release-artifacts/macos
+      - uses: actions/download-artifact@v4
+        with:
+          name: apex-windows
+          path: release-artifacts/windows
+      - name: Verify complete artifact set from this revision and run
+        run: node scripts/verify-release-artifacts.mjs release-artifacts "${GITHUB_REF_NAME#v}"
+      - name: Draft, upload, verify, then publish beta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/publish-release.mjs release-artifacts

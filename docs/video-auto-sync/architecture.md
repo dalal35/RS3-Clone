@@ -1,5 +1,7 @@
 # Local video analysis: Stage 1
 
+Windows implementation update (2026-10-16): the same public Rust frame API now has a Media Foundation backend in `src-tauri/src/video_analysis/windows.rs`; the Apple implementation described below is retained. Windows source/test typechecking is supplemental evidence; native execution and installer validation remain pending. See [cross-platform validation](../windows-validation.md).
+
 ## Purpose and boundaries
 
 This subsystem prepares local onboard MP4/MOV footage for later painted
@@ -63,8 +65,8 @@ architecture, signing, versioning, and build-specific license obligations. Rust
 libav bindings inherit those native dependencies. OpenCV would add a large native
 dependency before an image-processing algorithm exists. A Swift subprocess would
 add a protocol and executable lifecycle to package. AVFoundation avoids those
-costs for the current macOS target. A future Windows backend must implement the
-same Rust contract; macOS decoding availability does not imply Windows support.
+costs for the macOS target. The Windows Media Foundation implementation uses the
+same Rust contract; its native runtime validation remains separate from macOS.
 
 ## Pipeline and timing contract
 
@@ -105,13 +107,17 @@ UI playback or telemetry progress.
 
 ## Packaging and limitations
 
-The decoder is macOS-only; other platforms must return an explicit unsupported
-backend error until implemented. Codec availability follows the operating
+The decoder has macOS and Windows implementations; other platforms return an
+explicit unsupported-backend error. Windows runtime validation remains pending.
+Codec availability follows the operating
 system, so an MP4/MOV extension alone does not guarantee decoding. Damaged,
 encrypted, or unsupported media must surface an error. No fallback downloads or
 external executable lookup occur. Cross-compilation needs an appropriate Apple
 SDK and target toolchain. Tests generate tiny local videos rather than commit
 large footage; real Purdue Grand Prix clips remain a later validation input.
+Windows N requires Media Feature Pack before launch; missing system media DLLs
+may prevent process loading, while missing codecs with Media Foundation loaded
+produce structured decode errors. See the cross-platform validation record.
 
 ## Four-stage roadmap
 

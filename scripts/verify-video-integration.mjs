@@ -1,10 +1,11 @@
-import {chromium,expect} from '@playwright/test';
+import {launchBrowser} from './browser.mjs';
+import {expect} from '@playwright/test';
 import {createServer} from 'vite';
 import assert from 'node:assert/strict';
 let server,browser;
 try{
- server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:{ignored:['**/.tools/**','**/.superpowers/**']}}});await server.listen();
- browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+ server=await createServer({optimizeDeps:{entries:['index.html','tests/*.html']},server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
+ browser=await launchBrowser();
  const page=await browser.newPage({viewport:{width:1500,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
   const w=window;w.isTauri=true;w.seeks=[];w.saves=[];w.pending=[];w.delayAnalysis=false;w.duration=60;w.advancedRequests=[];

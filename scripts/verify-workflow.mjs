@@ -1,13 +1,14 @@
 // Browser exercises of the React workflow. IPC is simulated; native persistence is tested separately.
-import {chromium} from '@playwright/test';
+import {launchBrowser} from './browser.mjs';
 import {createServer} from 'vite';
 import assert from 'node:assert/strict';
 let server,browser;
 try{
- server=await createServer({server:{host:'127.0.0.1',port:0,strictPort:false}});await server.listen();
- browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+ server=await createServer({optimizeDeps:{entries:['index.html','tests/*.html']},server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
+ browser=await launchBrowser();
  const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
+  Object.defineProperty(navigator,'platform',{value:localStorage.getItem('test-platform')||'Win32',configurable:true});
   window.isTauri=true;
   const laps=[{id:'a',number:1,duration:10,start:0,end:10,complete:true},{id:'b',number:2,duration:12,start:10,end:22,complete:true}];
   const channels=[{id:'speed',name:'GPS Speed',unit:'m/s',times:[0,10],values:[10,20]},{id:'rpm',name:'RPM',unit:'rpm',times:[0,10],values:[1000,2000]}];
@@ -18,6 +19,7 @@ try{
   window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener:()=>{}};
   window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main'}},transformCallback:()=>1,invoke:async(cmd,args={})=>{
    const db=read();if(cmd.startsWith('plugin:event'))return 1;
+   if(cmd==='plugin:dialog|open'){window.openCalls=(window.openCalls??0)+1;return null;}
    if(cmd==='library_snapshot')return db;
    if(cmd==='load_library_session'){if(args.sessionId===db.virtualSession?.id)return db.virtualSession;if(args.sessionId==='two')await new Promise(r=>setTimeout(r,80));db.activeSessionId=args.sessionId;write(db);return sessions.find(s=>s.id===args.sessionId);}
    const preview=()=>{const selected=sessions.filter(s=>args.sessionIds.includes(s.id));const refs=selected.map(s=>({sessionId:s.id,contentVersion:db.entries.find(e=>e.id===s.id).contentVersion}));return {sources:refs,day:'2026-10-14',previewVersion:refs.map(r=>r.contentVersion).join('-'),warnings:['Conflicting track metadata.','Source timestamps overlap; both recordings are retained.'],laps:selected.flatMap((s,i)=>s.laps.map((lap,j)=>({...lap,id:JSON.stringify([s.id,lap.id]),sourceSessionId:s.id,sourceLapId:lap.id,displayNumber:i*2+j+1}))),channels:selected.flatMap(s=>s.channels.map(c=>({...c,id:`${s.id}::${c.id}`,sourceSessionId:s.id,sourceChannelId:c.id,times:[],values:[]})))};};
@@ -38,6 +40,7 @@ try{
   }};
  });
  await page.goto(server.resolvedUrls.local[0]);await page.getByRole('heading',{name:'Track one'}).waitFor();
+ assert.equal(await page.locator('.import-button kbd').innerText(),'Ctrl O','Windows import hint uses the working Control shortcut');
  await page.getByRole('button',{name:'Edit boundaries',exact:true}).click();
  const handle=page.getByRole('slider',{name:'Section boundary 1'});await handle.click();await page.waitForTimeout(150);assert.equal(await handle.evaluate(el=>document.activeElement===el),true,'Clicking a boundary enables keyboard adjustment');await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowRight');
  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('test-corners')||'null')?.[0]===60);await page.waitForTimeout(150);
@@ -47,9 +50,9 @@ try{
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('test-corners'))[0]),75,'Older analysis cannot reset a newer boundary draft');
  await page.getByRole('button',{name:'Done editing',exact:true}).click();
  await page.getByRole('button',{name:'Time',exact:true}).click();await page.getByRole('button',{name:'Compact',exact:true}).click();
- await page.getByRole('button',{name:/Track two Test/}).click();await page.getByRole('heading',{name:'Track two'}).waitFor();await page.getByText('Saved on this Mac').waitFor();
+ await page.getByRole('button',{name:/Track two Test/}).click();await page.getByRole('heading',{name:'Track two'}).waitFor();await page.getByText('Saved on this computer').waitFor();
  await page.locator('.plot-label').filter({hasText:'mph'}).waitFor();assert.equal(await page.locator('.plot-label').filter({hasText:'mph'}).count(),1,'Another session displays mph');
- await page.getByRole('button',{name:/Track one Test/}).click();await page.getByRole('heading',{name:'Track one'}).waitFor();await page.getByText('Saved on this Mac').waitFor();
+ await page.getByRole('button',{name:/Track one Test/}).click();await page.getByRole('heading',{name:'Track one'}).waitFor();await page.getByText('Saved on this computer').waitFor();
  await page.locator('.plot-label').filter({hasText:'mph'}).waitFor();assert.equal(await page.locator('.plot-label').filter({hasText:'mph'}).count(),1,'Switching retains mph');assert.equal(await page.locator('.segmented[aria-label="Horizontal axis"] button.active').innerText(),'Time','Switching restores axis');
  await page.reload();await page.getByRole('heading',{name:'Track one'}).waitFor();await page.locator('.plot-label').filter({hasText:'mph'}).waitFor();assert.equal(await page.locator('.plot-label').filter({hasText:'mph'}).count(),1,'Reload retains mph');assert.equal(await page.locator('.segmented[aria-label="Horizontal axis"] button.active').innerText(),'Time');assert.equal(await page.getByRole('button',{name:'Comfortable',exact:true}).count(),1,'Reload restores graph density');
  await page.locator('.library-entry').filter({hasText:'Track one'}).getByRole('button',{name:'Refresh',exact:true}).click();
@@ -75,10 +78,14 @@ try{
  await page.getByRole('heading',{name:'Merged · Track one'}).waitFor();await page.screenshot({path:'.tools/session-merge-workspace.png'});assert.equal(await page.locator('.library-entry').count(),3);assert.equal(await page.locator('.lap-row').count(),4);assert.equal(await page.evaluate(()=>window.mergeCalls),1);
  await page.getByRole('button',{name:'Compare lap 3',exact:true}).click();await page.waitForTimeout(200);
  assert.match(await page.locator('.lap-list').innerText(),/two.xrk/);
- await page.reload();await page.getByRole('heading',{name:'Merged · Track one'}).waitFor();await page.getByText('Saved on this Mac').waitFor();
+ await page.reload();await page.getByRole('heading',{name:'Merged · Track one'}).waitFor();await page.getByText('Saved on this computer').waitFor();
  await page.getByRole('button',{name:'Time',exact:true}).click();await page.getByRole('button',{name:'Unmerge',exact:true}).click();
  await page.getByRole('heading',{name:'Track one',exact:true}).waitFor();await page.waitForTimeout(250);assert.equal(await page.locator('.library-entry').count(),2);
  assert.deepEqual(normalizeOriginals(await page.evaluate(()=>JSON.parse(localStorage.getItem('test-library')).entries.map(e=>({id:e.id,workspace:e.workspace})))),normalizeOriginals(originals),'Unmerge preserves original workspaces through existing default normalization, including queued saves');
  await page.locator('.library-entry').filter({hasText:'Track two'}).getByRole('button',{name:'Remove',exact:true}).click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('test-library')).entries.length===1);assert.equal(await page.locator('.library-entry').count(),1);
+ await page.keyboard.press('Control+o');await page.waitForFunction(()=>window.openCalls===1);
+ await page.evaluate(()=>localStorage.setItem('test-platform','MacIntel'));await page.reload();await page.getByRole('heading',{name:'Track one'}).waitFor();
+ assert.equal(await page.locator('.import-button kbd').innerText(),'⌘ O','macOS keeps the Command shortcut hint');
+ await page.keyboard.press('Meta+o');await page.waitForFunction(()=>window.openCalls===1);
  assert.deepEqual(errors,[]);console.log('PASS: React IPC workflow — per-session switching, queued saves, workspace reload and safe library remove');
 }finally{await browser?.close();await server?.close();}

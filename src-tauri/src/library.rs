@@ -1,5 +1,6 @@
 //! Local references and preferences only: raw telemetry stays in its original XRK.
 use crate::merging::{self, MergeInfo, MergePreview, MergeSource, SourceRef};
+use crate::persistence::atomic_write;
 use crate::telemetry::{self, Analysis, Session};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -7,8 +8,8 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::{
     collections::HashMap,
-    fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    fs::{self, File},
+    io::Read,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -131,24 +132,6 @@ fn read_manifest(path: &Path) -> Result<Manifest, String> {
     }
     Ok(manifest)
 }
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let temp = path.with_extension("tmp");
-    let result = (|| -> std::io::Result<()> {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&temp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        fs::rename(&temp, path)?;
-        File::open(path.parent().unwrap())?.sync_all()?;
-        Ok(())
-    })();
-    result.map_err(|e| {
-        format!("Could not save local library: {e}. Your telemetry file is unchanged.")
-    })
-}
 fn fingerprint(path: &Path) -> Result<String, String> {
     if !path
         .extension()
@@ -225,8 +208,14 @@ impl Library {
             Err(_) => {}
         }
         let bytes = serde_json::to_vec_pretty(&next).map_err(|e| e.to_string())?;
+        // Windows has no fallible write after the committed primary: memory and disk
+        // must advance together. A backup-only interrupted first save is recoverable.
+        #[cfg(windows)]
+        if !self.directory.join("library.backup.json").exists() {
+            atomic_write(&self.directory.join("library.backup.json"), &bytes)?;
+        }
         atomic_write(&primary, &bytes)?;
-        // First save also has a recoverable generation.
+        #[cfg(not(windows))]
         if !self.directory.join("library.backup.json").exists() {
             atomic_write(&self.directory.join("library.backup.json"), &bytes)?;
         }
@@ -1239,5 +1228,65 @@ mod merge_mapping_tests {
             },
         ];
         assert!(telemetry::expressions::evaluate(&session, &cycle).is_err());
+    }
+}
+
+#[cfg(all(windows, test))]
+mod windows_commit_tests {
+    use super::*;
+    #[test]
+    fn primary_failure_after_backup_rotation_preserves_memory_then_retries() {
+        let root = std::env::temp_dir().join(format!("apex-commit-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let mut library = Library::open(root.clone()).unwrap();
+        library.commit(Manifest::default()).unwrap();
+        let before = fs::read(root.join("library.json")).unwrap();
+        let mut next = Manifest::default();
+        next.version = 2;
+        crate::persistence::FAIL_REPLACE
+            .with(|f| *f.borrow_mut() = Some(root.join("library.json")));
+        assert!(library.commit(next.clone()).is_err());
+        crate::persistence::FAIL_REPLACE.with(|f| *f.borrow_mut() = None);
+        assert_eq!(library.manifest.version, 1);
+        assert_eq!(fs::read(root.join("library.json")).unwrap(), before);
+        assert_eq!(
+            fs::read(root.join("library.backup.json")).unwrap(),
+            serde_json::to_vec(&Manifest::default()).unwrap()
+        );
+        library.commit(next).unwrap();
+        assert_eq!(Library::open(root.clone()).unwrap().manifest.version, 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn backup_preparation_failure_does_not_change_primary_or_memory() {
+        let root = std::env::temp_dir().join(format!("apex-backup-fail-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let mut library = Library::open(root.clone()).unwrap();
+        library.commit(Manifest::default()).unwrap();
+        let before = fs::read(root.join("library.json")).unwrap();
+        let mut next = Manifest::default();
+        next.version = 2;
+        crate::persistence::FAIL_REPLACE
+            .with(|f| *f.borrow_mut() = Some(root.join("library.backup.json")));
+        assert!(library.commit(next).is_err());
+        crate::persistence::FAIL_REPLACE.with(|f| *f.borrow_mut() = None);
+        assert_eq!(library.manifest.version, 1);
+        assert_eq!(fs::read(root.join("library.json")).unwrap(), before);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn first_save_backup_only_interruption_is_recoverable() {
+        let root = std::env::temp_dir().join(format!("apex-first-save-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let mut library = Library::open(root.clone()).unwrap();
+        crate::persistence::FAIL_REPLACE
+            .with(|f| *f.borrow_mut() = Some(root.join("library.json")));
+        assert!(library.commit(Manifest::default()).is_err());
+        crate::persistence::FAIL_REPLACE.with(|f| *f.borrow_mut() = None);
+        assert!(!root.join("library.json").exists());
+        let recovered = Library::open(root.clone()).unwrap();
+        assert_eq!(recovered.manifest.version, 1);
+        assert!(!recovered.warnings.is_empty());
+        fs::remove_dir_all(root).unwrap();
     }
 }

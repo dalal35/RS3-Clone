@@ -1,3 +1,6 @@
+#[cfg(any(windows, test))]
+mod desktop;
+mod persistence;
 pub mod library;
 pub mod merging;
 pub mod telemetry;
@@ -183,14 +186,29 @@ async fn validate_formulas(
     .await
 }
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    #[cfg(windows)]
+    let builder = builder.plugin(
+        tauri_plugin_window_state::Builder::default()
+            .with_state_flags(
+                tauri_plugin_window_state::StateFlags::SIZE
+                    | tauri_plugin_window_state::StateFlags::POSITION
+                    | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+            )
+            .skip_initial_state("main")
+            .build(),
+    );
+    builder
         .setup(|app| {
             let library = app
                 .path()
                 .app_data_dir()
                 .map_err(|e| format!("Cannot locate local library folder: {e}"))
                 .and_then(Library::open);
+            #[cfg(windows)]
+            if let Err(error) = desktop::restore(app) {
+                eprintln!("Could not restore Windows window geometry: {error}");
+            }
             // A damaged/unsupported library stays read-only and is reported to the UI.
             app.manage(Arc::new(Mutex::new(library)) as Store);
             Ok(())

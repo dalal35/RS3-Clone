@@ -45,12 +45,14 @@ export default function Plots({analysis,axis,onCursor,resetVersion,cursor=null,e
       (plot as uPlot & {dispose:()=>void}).dispose=()=>{observer.disconnect();el.removeEventListener('pointerdown',down,true);el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',up);el.removeEventListener('keydown',key);plot.destroy();};
       return plot;
     });
-    if(initialZoom){const max=Math.max(...samples.map(s=>s.x.at(-1)??0),1);if(initialZoom.min>=0&&initialZoom.max<=max)plots.current.forEach(p=>p.setScale('x',initialZoom));}
+    if(initialZoom){const max=Math.max(...samples.map(s=>s.x.at(-1)??0),analysis.delta?.x.at(-1)??0,1);if(initialZoom.min>=0&&initialZoom.max<=max)plots.current.forEach(p=>p.setScale('x',initialZoom));}
     initialized=true;
     return()=>{initialized=false;plots.current.forEach(p=>(p as uPlot&{dispose:()=>void}).dispose());plots.current=[];};
   },[analysis,axis,layout,events]);
   useEffect(()=>{
     if(!initialZoom||!Number.isFinite(initialZoom.min)||!Number.isFinite(initialZoom.max)||initialZoom.max<=initialZoom.min)return;
+    const max=Math.max(...samples.map(s=>s.x.at(-1)??0),analysis.delta?.x.at(-1)??0,1);
+    if(initialZoom.min<0||initialZoom.max>max)return;
     applyingZoom.current=true;
     try{let changed=false;plots.current.forEach(p=>{if(p.scales.x.min!==initialZoom.min||p.scales.x.max!==initialZoom.max){p.setScale('x',initialZoom);changed=true;}});
       if(changed){applyingCursor.current=true;try{const position=sharedCursor.current;plots.current.forEach(p=>p.setCursor({left:position==null?-10:p.valToPos(position,'x'),top:30}));}finally{applyingCursor.current=false;}}

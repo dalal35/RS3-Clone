@@ -1,5 +1,11 @@
 # Stage 1 validation
 
+Cross-platform update (2026-10-16): this document retains the historical macOS
+Stage 1 evidence. Windows Media Foundation decoding and NSIS packaging are now
+implemented in source; native Windows execution and installer generation remain
+pending. Current regression results and acceptance gates are recorded in
+[Windows support validation](../windows-validation.md).
+
 ## Reproduce
 
 Use Node 20+, stable Rust, and Apple's Command Line Tools on macOS 13+.
@@ -67,5 +73,5 @@ Measure long-clip throughput and peak decoder memory on representative Purdue
 Grand Prix recordings. Label actual crossings and check footage orientation,
 lighting, motion blur, shadows, codec variants, and recorder timestamp behavior
 before deciding line-detection thresholds. Validate other track footage before
-claiming generalization. Windows decoding and Windows packaging remain future
-work.
+claiming generalization. Windows decoding and packaging implementations require
+native runner/runtime and installed-desktop validation before acceptance.

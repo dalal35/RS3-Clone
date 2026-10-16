@@ -17,6 +17,10 @@ test('Windows rebrand preserves installer mode and selects compatibility templat
  assert.equal(config.bundle.windows.webviewInstallMode.type,'downloadBootstrapper');
 });
 
+test('installer template and hooks retain canonical LF bytes on every platform',()=>{
+ for(const path of [templatePath,hooksPath])assert.doesNotMatch(read(path),/\r/,`${path} must use LF; check Git checkout attributes`);
+});
+
 test('only legacy registry identities differ from the exact Tauri 2.12.2 template',()=>{
  assert(existsSync(new URL(`../${templatePath}`,import.meta.url)),'Compatibility template is required');
  const source=read(templatePath);

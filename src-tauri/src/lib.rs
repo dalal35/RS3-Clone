@@ -231,5 +231,5 @@ pub fn run() {
             set_corner_boundaries
         ])
         .run(tauri::generate_context!())
-        .expect("Could not launch Apex Telemetry");
+        .expect("Could not launch Ten Tenths Telemetry");
 }

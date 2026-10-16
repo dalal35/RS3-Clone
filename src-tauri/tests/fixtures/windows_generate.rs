@@ -5,10 +5,7 @@ use windows::{
     core::{Interface, GUID, PCWSTR},
     Win32::{
         Media::MediaFoundation::*,
-        System::{
-            Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED},
-            Variant::VARIANT,
-        },
+        System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED},
     },
 };
 struct Apartment;
@@ -74,7 +71,9 @@ pub fn generate(path: &Path, mode: &str) -> windows::core::Result<()> {
             output.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, 44100)?;
             output.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
             output.SetUINT32(&MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 12000)?;
-            let stream = writer.AddStream(&output)?;
+            let stream = writer.AddStream(&output).map_err(|e| {
+                windows::core::Error::new(e.code(), format!("Add {mode:?} fixture stream: {e}"))
+            })?;
             let input = MFCreateMediaType()?;
             input.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio)?;
             input.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_PCM)?;
@@ -83,8 +82,17 @@ pub fn generate(path: &Path, mode: &str) -> windows::core::Result<()> {
             input.SetUINT32(&MF_MT_AUDIO_BITS_PER_SAMPLE, 16)?;
             input.SetUINT32(&MF_MT_AUDIO_BLOCK_ALIGNMENT, 2)?;
             input.SetUINT32(&MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 88200)?;
-            writer.SetInputMediaType(stream, &input, None)?;
-            writer.BeginWriting()?;
+            writer
+                .SetInputMediaType(stream, &input, None)
+                .map_err(|e| {
+                    windows::core::Error::new(
+                        e.code(),
+                        format!("Configure {mode:?} fixture input: {e}"),
+                    )
+                })?;
+            writer.BeginWriting().map_err(|e| {
+                windows::core::Error::new(e.code(), format!("Begin {mode:?} fixture encoding: {e}"))
+            })?;
             writer.WriteSample(stream, &sample(&vec![0; 8820], 0, 1_000_000)?)?;
             return writer.Finalize();
         }
@@ -100,18 +108,38 @@ pub fn generate(path: &Path, mode: &str) -> windows::core::Result<()> {
         if mode == "bframes" {
             output.SetUINT32(&MF_MT_MPEG2_PROFILE, 77)?;
         }
-        let stream = writer.AddStream(&output)?;
+        let stream = writer.AddStream(&output).map_err(|e| {
+            windows::core::Error::new(e.code(), format!("Add {mode:?} fixture stream: {e}"))
+        })?;
         let input = MFCreateMediaType()?;
         input.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
-        input.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32)?;
+        // Feed the software H.264 encoder one of its native input subtypes.
+        // RGB32 needs an additional converter that Sink Writer does not guarantee.
+        input.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12)?;
         dimensions(&input)?;
-        input.SetUINT32(&MF_MT_DEFAULT_STRIDE, WIDTH * 4)?;
-        writer.SetInputMediaType(stream, &input, None)?;
+        input.SetUINT32(&MF_MT_DEFAULT_STRIDE, WIDTH)?;
+        let mut encoding = None;
+        if mode == "bframes" {
+            // Sink Writer applies these parameters while configuring the encoder;
+            // BPictureCount must precede the encoder's SetOutputType call.
+            MFCreateAttributes(&mut encoding, 1)?;
+            encoding
+                .as_ref()
+                .unwrap()
+                .SetUINT32(&CODECAPI_AVEncMPVDefaultBPictureCount, 2)?;
+        }
+        writer
+            .SetInputMediaType(stream, &input, encoding.as_ref())
+            .map_err(|e| {
+                windows::core::Error::new(
+                    e.code(),
+                    format!("Configure {mode:?} fixture input: {e}"),
+                )
+            })?;
         if mode == "bframes" {
             let mut raw = std::ptr::null_mut();
             writer.GetServiceForStream(stream, &GUID::zeroed(), &ICodecAPI::IID, &mut raw)?;
             let codec = ICodecAPI::from_raw(raw);
-            codec.SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &VARIANT::from(2u32))?;
             let selected = codec.GetValue(&CODECAPI_AVEncMPVDefaultBPictureCount)?;
             assert_eq!(
                 u32::try_from(&selected).expect("B-frame property is u32"),
@@ -119,7 +147,9 @@ pub fn generate(path: &Path, mode: &str) -> windows::core::Result<()> {
                 "Encoder must enable B frames, not silently use baseline profile"
             );
         }
-        writer.BeginWriting()?;
+        writer.BeginWriting().map_err(|e| {
+            windows::core::Error::new(e.code(), format!("Begin {mode:?} fixture encoding: {e}"))
+        })?;
         let ticks: Vec<i64> = match mode {
             "cfr" => (0..8).collect(),
             "bframes" => (0..30).collect(),
@@ -127,25 +157,32 @@ pub fn generate(path: &Path, mode: &str) -> windows::core::Result<()> {
             _ => vec![20, 21, 24, 29],
         };
         for (i, tick) in ticks.iter().enumerate() {
-            let mut bytes = vec![0u8; (WIDTH * HEIGHT * 4) as usize];
+            // Original BT.601 limited-range NV12 color fields: one luma plane,
+            // then interleaved U/V at half resolution. The half-image boundary
+            // is chroma-aligned, so the top-down and rotation checks stay exact.
+            let mut bytes = vec![0u8; (WIDTH * HEIGHT * 3 / 2) as usize];
             for y in 0..HEIGHT {
-                for x in 0..WIDTH {
-                    let p = &mut bytes[((y * WIDTH + x) * 4) as usize..][..4];
-                    let rgb = if !mode.is_empty() {
-                        if y < HEIGHT / 2 {
-                            [255, 0, 0]
-                        } else {
-                            [0, 0, 255]
-                        }
+                let color = if !mode.is_empty() {
+                    if y < HEIGHT / 2 {
+                        0
                     } else {
-                        match i {
-                            0 => [255, 0, 0],
-                            1 => [0, 255, 0],
-                            2 => [0, 0, 255],
-                            _ => [0, 0, 0],
-                        }
-                    };
-                    p.copy_from_slice(&[rgb[2], rgb[1], rgb[0], 255]);
+                        2
+                    }
+                } else {
+                    i.min(3)
+                };
+                let [luma, u, v] = match color {
+                    0 => [81, 90, 240],  // red
+                    1 => [145, 54, 34],  // green
+                    2 => [41, 240, 110], // blue
+                    _ => [16, 128, 128], // black
+                };
+                bytes[(y * WIDTH) as usize..((y + 1) * WIDTH) as usize].fill(luma);
+                if y % 2 == 0 {
+                    let start = (WIDTH * HEIGHT + y / 2 * WIDTH) as usize;
+                    for chroma in bytes[start..start + WIDTH as usize].chunks_exact_mut(2) {
+                        chroma.copy_from_slice(&[u, v]);
+                    }
                 }
             }
             let duration = ticks.get(i + 1).map(|next| next - tick).unwrap_or(
@@ -160,6 +197,8 @@ pub fn generate(path: &Path, mode: &str) -> windows::core::Result<()> {
                 &sample(&bytes, tick * 1_000_000, duration * 1_000_000)?,
             )?;
         }
-        writer.Finalize()
+        writer.Finalize().map_err(|e| {
+            windows::core::Error::new(e.code(), format!("Finalize {mode:?} fixture: {e}"))
+        })
     }
 }

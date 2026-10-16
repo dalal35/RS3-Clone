@@ -19,7 +19,7 @@ function find(root,predicate){return readdirSync(root,{withFileTypes:true}).flat
 function only(paths,label){assert.equal(paths.length,1,`Expected exactly one ${label}`);return paths[0];}
 let names;
 if(platform==='macos'){
- const app=join(release,'bundle/macos/Apex Telemetry.app');
+ const app=join(release,'bundle/macos/Ten Tenths Telemetry.app');
  const binary=readFileSync(join(app,'Contents/MacOS/apex-telemetry'));
  assert(binary.readUInt32LE(0)===0xfeedfacf&&binary.readUInt32LE(4)===0x0100000c,'Expected native arm64 Mach-O');
  assert.equal(sha256(readFileSync(only(find(join(app,'Contents/Resources'),p=>basename(p)==='THIRD_PARTY_NOTICES.md'),'bundled notices'))),sha256(notices));
@@ -27,14 +27,14 @@ if(platform==='macos'){
  const dmg=only(find(join(release,'bundle/dmg'),p=>p.endsWith(`_${version}_aarch64.dmg`)),'Apple Silicon DMG');
  const bytes=readFileSync(dmg);
  assert(bytes.length>=512&&bytes.toString('ascii',bytes.length-512,bytes.length-508)==='koly','Invalid DMG trailer');
- names=[basename(dmg),`Apex Telemetry_${version}_aarch64.app.tar.gz`];
+ names=[basename(dmg),`Ten Tenths Telemetry_${version}_aarch64.app.tar.gz`];
  copyFileSync(dmg,join(output,names[0]));
- execFileSync('tar',['-czf',join(output,names[1]),'-C',join(release,'bundle/macos'),'Apex Telemetry.app'],{stdio:'inherit'});
+ execFileSync('tar',['-czf',join(output,names[1]),'-C',join(release,'bundle/macos'),'Ten Tenths Telemetry.app'],{stdio:'inherit'});
 }else{
  const binaryPath=join(release,'apex-telemetry.exe'),binary=readFileSync(binaryPath);
  verifyWindowsBinary(binary);
  const metadata=JSON.parse(execFileSync('powershell',['-NoProfile','-NonInteractive','-Command','(Get-Item -LiteralPath $env:APEX_BINARY_PATH).VersionInfo | Select-Object ProductName,FileVersion | ConvertTo-Json -Compress'],{encoding:'utf8',env:{...process.env,APEX_BINARY_PATH:binaryPath}}));
- assert.equal(metadata.ProductName,'Apex Telemetry','Wrong Windows product identity');
+ assert.equal(metadata.ProductName,'Ten Tenths Telemetry','Wrong Windows product identity');
  assert(metadata.FileVersion===version||metadata.FileVersion.startsWith(`${version}.`),'Wrong Windows binary version');
  const installer=only(find(join(release,'bundle/nsis'),p=>p.endsWith(`_${version}_x64-setup.exe`)),'x64 NSIS installer');
  assert.equal(readFileSync(installer).toString('ascii',0,2),'MZ','Invalid NSIS executable');

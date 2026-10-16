@@ -29,7 +29,7 @@ export function verifyArtifacts(root,version,expected={}){
   identities.push(`${manifest.revision}/${manifest.runId}`);
   const suffixes=platform==='macos'?['_aarch64.dmg','_aarch64.app.tar.gz']:['_x64-setup.exe'];
   assert.equal(manifest.assets?.length,suffixes.length,'Incomplete platform artifact set');
-  const required=suffixes.map(s=>`Apex Telemetry_${version}${s}`);
+  const required=suffixes.map(s=>`Ten Tenths Telemetry_${version}${s}`);
   assert.deepEqual(manifest.assets.map(a=>a.name).sort(),required.sort(),'Wrong artifact names/architecture');
   assert.deepEqual(readdirSync(dir).sort(),['manifest.json',...required].sort(),'Unexpected staged files');
   for(const asset of manifest.assets){

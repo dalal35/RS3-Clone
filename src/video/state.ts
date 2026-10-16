@@ -64,7 +64,7 @@ export function restoreVideoState(raw: unknown, session: Session, contentVersion
     if (!record(raw)) throw new Error('The saved video workspace is damaged. Telemetry is still available.');
     if (raw.sessionId !== session.id || raw.contentVersion !== contentVersion) throw new Error('Video mappings belong to another session or a changed telemetry content version; attach the video again.');
     if (typeof raw.version === 'number' && Number.isSafeInteger(raw.version) && raw.version > 1) {
-      return { state: null, warnings: ['This video workspace uses a newer version. Update Apex to edit it; its saved data is preserved.'], futureRaw: raw };
+      return { state: null, warnings: ['This video workspace uses a newer version. Update Ten Tenths Telemetry to edit it; its saved data is preserved.'], futureRaw: raw };
     }
     if (raw.version !== 1) throw new Error('The saved video workspace version is unsupported. Telemetry is still available.');
     const source = readSource(raw.source), segments = readSegments(raw.segments);

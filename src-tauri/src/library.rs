@@ -94,7 +94,7 @@ fn read_manifest(path: &Path) -> Result<Manifest, String> {
     let value: Value =
         serde_json::from_slice(&bytes).map_err(|e| format!("Local library is damaged: {e}"))?;
     if !matches!(value.get("version").and_then(Value::as_u64), Some(1 | 2)) {
-        return Err("Unsupported local library version; update Apex Telemetry. Your library has not been changed.".into());
+        return Err("Unsupported local library version; update Ten Tenths Telemetry. Your library has not been changed.".into());
     }
     let manifest: Manifest =
         serde_json::from_value(value).map_err(|e| format!("Local library is damaged: {e}"))?;

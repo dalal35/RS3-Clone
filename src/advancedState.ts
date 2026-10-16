@@ -38,7 +38,7 @@ export function restoreAdvanced(raw:unknown):AdvancedState {
  return {version:1,config:config(r.config),formulas:Array.isArray(r.formulas)?r.formulas.filter(f=>f&&typeof f.id==='string'&&typeof f.name==='string'&&typeof f.expression==='string').slice(0,20):[],presets,defaultPreset:presets.some(p=>p.id===r.defaultPreset)?r.defaultPreset!:'overview',lastPreset:presets.some(p=>p.id===r.lastPreset)?r.lastPreset!:'overview'};
 }
 export function boundedAdvanced(s:AdvancedState):AdvancedState {
- if(s.readOnly)throw new Error('This advanced workspace uses a newer schema. Update Apex to edit it.');
+ if(s.readOnly)throw new Error('This advanced workspace uses a newer schema. Update Ten Tenths Telemetry to edit it.');
  if(s.formulas.length>20||s.presets.length>25||s.config.excludedIds.length>200||new TextEncoder().encode(JSON.stringify(s)).length>56000)throw new Error('Advanced preferences exceed the local storage limit. Remove a preset, formula or exclusion.');
  return s;
 }

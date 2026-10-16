@@ -1,5 +1,25 @@
 # Cross-platform implementation and validation
 
+## Current release validation — 2026-10-16
+
+The Windows implementation is committed and pushed through `a2b90ef`. CI run
+[38913753187](https://github.com/dalal35/RS3-Clone/actions/runs/38913753187) passed
+full MSVC checking/linking and 90 Windows unit tests, then failed generated media
+setup with `0xC00D36B4`. macOS passed 101 native tests and failed a browser
+boundary-edit race. The next 0.1.1 candidate corrects fixture input/encoder setup
+and waits for queued writes before analysis; local frontend 181, release/branding
+22, CPU-throttled workflow (twice), branding and video checks pass. Native CI
+and installer generation must still validate those corrections. No installer or
+public-release success is claimed at this checkpoint.
+
+The candidate includes the implemented Ten Tenths Telemetry rebrand and retains
+existing library/bundle identity. Unrelated explorer/merge/layout work remains
+uncommitted. Publication is now explicitly authorized, including making the
+repository and its Git history public; the existing v0.1.0 tag must be retained.
+See [release preflight and failure handling](release-preflight.md).
+
+## Historical local implementation evidence
+
 Historical local checks below were recorded 2026-10-16 against the **uncommitted working tree** based on `fc25121`,
 including preserved pre-existing explorer/UI work. This is a local implementation
 delivery, **not a verified Windows release**. At that checkpoint no commit, push, tag or publication
@@ -81,7 +101,7 @@ that this uncommitted source has been pushed or built by GitHub Actions. The app
 is ad-hoc signed, not notarized. A new installed-app GUI smoke on a separate Mac
 is not claimed; user data was preserved rather than launching against that library.
 
-## Windows evidence and blocking gaps
+## Historical Windows evidence and blocking gaps (before CI)
 
 | Check | Status / limit |
 |---|---|

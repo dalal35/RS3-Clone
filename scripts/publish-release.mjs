@@ -17,7 +17,7 @@ export function publishRelease(root,version,env=process.env,run=args=>execFileSy
  writeFileSync(notes,`Download the x64 setup.exe for Windows 10/11, or the aarch64.dmg for Apple Silicon macOS 13+.\n\nWindows releases are unsigned; SmartScreen may warn. WebView2 setup requires internet if the runtime is absent. macOS uses an ad-hoc signature and is not notarized; use System Settings > Privacy & Security > Open Anyway if needed and you trust the download. See README for instructions and native GUI/codec validation limitations.\n\nBuild revision: ${env.GITHUB_SHA}\nWorkflow run: ${env.GITHUB_RUN_ID}\n`);
  const tag=env.GITHUB_REF_NAME,repo=['--repo',env.GITHUB_REPOSITORY];
  // Existing releases (including stale drafts) fail safely; never clobber assets.
- run(['release','create',tag,'--draft','--prerelease','--verify-tag','--generate-notes','--title',`Apex Telemetry v${version} Beta`,'--notes-file',notes,...repo]);
+ run(['release','create',tag,'--draft','--prerelease','--verify-tag','--generate-notes','--title',`Ten Tenths Telemetry v${version} Beta`,'--notes-file',notes,...repo]);
  const upload=[...files.map(f=>f.path),checksum];
  run(['release','upload',tag,...upload,...repo]);
  const remote=JSON.parse(run(['release','view',tag,'--json','isDraft,assets',...repo]));

@@ -2,11 +2,11 @@
 
 These fixtures are generated from original color fields and contain no private
 recordings or downloaded media. Generation code is test-only and is not bundled
-in Apex Telemetry.
+in Ten Tenths Telemetry.
 
 - macOS: `generate.m`, unchanged AVFoundation MJPEG MOV generator.
 - Windows: `windows_generate.rs`, Media Foundation Sink Writer, software H.264
-  MP4 and AAC audio-only output. Windows system media components are prerequisites.
+  MP4 from original NV12 color fields and AAC audio-only output. Windows system media components are prerequisites.
 
 Both generators produce 64×32 source images. The default has source PTS
 2.0, 2.1, 2.4, 2.9 seconds and a final 0.5-second duration. Frames are red,
@@ -18,7 +18,7 @@ requested, read-back-verified B-picture count of two, plus 600 CFR frames for
 cancellation during skipped-frame scanning.
 
 Windows fixture recipes and decoder sources have been typechecked for the MSVC
-Rust target on macOS. No Windows generation/decoding has been executed here.
+Rust target on macOS. The first native CI attempt failed during media-type setup; corrected NV12 input and encoder parameters await the next native run.
 In particular, Sink Writer edit-list/start-delay handling, encoded rotation and
 actual B-picture output must pass the native assertions on Windows before they
 constitute runtime evidence. Encoder property acceptance alone does not prove

@@ -102,3 +102,29 @@ fn future_schema_is_never_replaced_by_backup_or_save() {
     assert_eq!(fs::read(root.0.join("library.json")).unwrap(), future);
     assert_eq!(library.snapshot().unwrap().entries[0].workspace, None);
 }
+
+#[test]
+fn rebrand_reopens_existing_library_without_migrating_workspace_data() {
+    let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    assert_eq!(config["identifier"], "com.dalal35.apextelemetry");
+    assert_eq!(config["productName"], "Ten Tenths Telemetry");
+    let root = Sandbox::new();
+    let workspace = json!({
+        "contentVersion":"a".repeat(64),"primary":"lap-1","comparison":"lap-2",
+        "axis":"distance","channels":["speed","custom-channel"],
+        "advanced":{"formulas":[{"id":"math-1","expression":"speed * 2"}],"preset":"driver"},
+        "cornerBoundaries":[12.0,40.0],
+        "video":{"sources":[{"id":"camera-1","path":"/old library/onboard.mp4"}],
+                 "segments":[{"telemetryStart":10.0,"videoStart":4.0}]},
+        "futureExtension":{"preserve":true}
+    });
+    let mut legacy = manifest();
+    legacy["entries"][0]["workspace"] = workspace.clone();
+    let original = serde_json::to_vec(&legacy).unwrap();
+    fs::write(root.0.join("library.json"), &original).unwrap();
+    let mut library = Library::open(root.0.clone()).unwrap();
+    assert_eq!(library.snapshot().unwrap().entries[0].workspace, Some(workspace.clone()));
+    assert_eq!(fs::read(root.0.join("library.json")).unwrap(), original);
+    library.save_workspace("synthetic", workspace.clone()).unwrap();
+    assert_eq!(Library::open(root.0.clone()).unwrap().snapshot().unwrap().entries[0].workspace, Some(workspace));
+}

@@ -4,12 +4,17 @@ use std::path::PathBuf;
 #[path = "support/video_fixtures.rs"]
 mod video_fixtures;
 use video_fixtures::{fixture, fixture_mode};
+// MJPEG permits tiny macOS fixtures; Windows H.264 requires at least 48x48.
+#[cfg(target_os = "macos")]
+const SOURCE_SIZE: (u32, u32) = (64, 32);
+#[cfg(windows)]
+const SOURCE_SIZE: (u32, u32) = (128, 64);
 #[test]
 fn real_vfr_metadata_frames_sampling_and_cleanup() {
     let path = fixture();
     let cancel = CancellationToken::default();
     let metadata = inspect(&path, &cancel).unwrap();
-    assert_eq!((metadata.width, metadata.height), (64, 32));
+    assert_eq!((metadata.width, metadata.height), SOURCE_SIZE);
     assert!(
         metadata.duration_seconds >= 3.3 && metadata.duration_seconds <= 3.5,
         "{metadata:?}"
@@ -175,7 +180,7 @@ fn rotated_pixels_are_top_down_and_consumer_error_finishes_progress() {
     let path = fixture_mode("rotate");
     let token = CancellationToken::default();
     let meta = inspect(&path, &token).unwrap();
-    assert_eq!((meta.width, meta.height), (32, 64));
+    assert_eq!((meta.width, meta.height), (SOURCE_SIZE.1, SOURCE_SIZE.0));
     let frame = extract_frame(
         &path,
         2.0,

@@ -8,7 +8,9 @@ in Ten Tenths Telemetry.
 - Windows: `windows_generate.rs`, Media Foundation Sink Writer, software H.264
   MP4 from original NV12 color fields and AAC audio-only output. Windows system media components are prerequisites.
 
-Both generators produce 64×32 source images. The default has source PTS
+The macOS MJPEG generator produces 64×32 source images; Windows H.264 uses
+128×64 to exceed the [system decoder minimum of 48×48](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-decoder). Both preserve the same asymmetric 2:1 color fields and the exact 32×16
+resized-frame assertions. The default has source PTS
 2.0, 2.1, 2.4, 2.9 seconds and a final 0.5-second duration. Frames are red,
 green, blue, then black. Pattern and rotation variants use red upper and blue
 lower halves; rotation records a clockwise 90-degree display transform.

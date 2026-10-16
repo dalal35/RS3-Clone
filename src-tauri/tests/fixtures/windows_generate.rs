@@ -26,8 +26,10 @@ impl Drop for Runtime {
         }
     }
 }
-const WIDTH: u32 = 64;
-const HEIGHT: u32 = 32;
+// The Windows system H.264 decoder requires at least 48x48 pixels.
+// Preserve the asymmetric 2:1 field and resize contracts above that OS minimum.
+const WIDTH: u32 = 128;
+const HEIGHT: u32 = 64;
 unsafe fn dimensions(media: &IMFMediaType) -> windows::core::Result<()> {
     media.SetUINT64(&MF_MT_FRAME_SIZE, ((WIDTH as u64) << 32) | HEIGHT as u64)?;
     media.SetUINT64(&MF_MT_FRAME_RATE, (10u64 << 32) | 1)?;

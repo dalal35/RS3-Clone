@@ -20,3 +20,10 @@ test('dispatch and partial artifacts never call release operations',t=>{const ro
 test('failed upload leaves a draft, and publication follows complete upload',t=>{const root=sandbox(t);seedArtifacts(root);const calls=[];assert.throws(()=>publishRelease(root,'0.1.0',tagEnv,args=>{calls.push(args);if(args[1]==='upload')throw Error('upload failed');}),/upload failed/);assert.equal(calls.length,2);assert(calls[0].includes('--draft'));assert(!calls.some(c=>c[1]==='edit'));calls.length=0;publishRelease(root,'0.1.0',tagEnv,args=>{calls.push(args);if(args[1]==='view')return JSON.stringify({isDraft:true,assets:[...verifyArtifacts(root,'0.1.0').map(f=>({name:f.name,size:f.size})),{name:'SHA256SUMS',size:statSync(join(root,'SHA256SUMS')).size}]});});assert.deepEqual(calls.map(c=>c[1]),['create','upload','view','edit']);assert(calls[3].includes('--draft=false'));});
 test('remote incomplete upload is not published even if upload command succeeds',t=>{const root=sandbox(t);seedArtifacts(root);const calls=[];assert.throws(()=>publishRelease(root,'0.1.0',tagEnv,args=>{calls.push(args);if(args[1]==='view')return JSON.stringify({isDraft:true,assets:[]});}),/incomplete/);assert(!calls.some(c=>c[1]==='edit'));});
 test('existing release creation failure never uploads or overwrites',t=>{const root=sandbox(t);seedArtifacts(root);const calls=[];assert.throws(()=>publishRelease(root,'0.1.0',tagEnv,args=>{calls.push(args);throw Error('already exists');}),/already exists/);assert.equal(calls.length,1);assert(!calls.flat().includes('--clobber'));});
+
+test('branch push validates package versions without requiring a release tag',t=>{
+ const root=sandbox(t);seedVersion(root);
+ assert.equal(verifyVersion(root,{GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/fix/dedicated-advanced-workspace',GITHUB_REF_NAME:'fix/dedicated-advanced-workspace'}),'0.1.0');
+ assert.equal(verifyVersion(root,tagEnv),'0.1.0');
+ assert.throws(()=>verifyVersion(root,{...tagEnv,GITHUB_REF_NAME:'v0.2.0'}),/Tag/);
+});

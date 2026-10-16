@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "tauri": "tauri",
+    "build:mac": "tauri build --target aarch64-apple-darwin --bundles app,dmg -- --locked",
     "test:plots": "node scripts/verify-plots.mjs",
     "test:workflow": "node scripts/verify-workflow.mjs",
     "test:advanced": "node scripts/verify-advanced.mjs",

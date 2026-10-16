@@ -18,7 +18,8 @@ successful macOS and Windows jobs from that tag's workflow run.
 - [ ] Run relevant local regressions and obtain independent acceptance review.
   Resolve critical findings before tagging. Record physical-device gaps honestly.
 - [ ] Confirm the exact branch revision passes native Windows MSVC compilation,
-  persistence/media tests, browser tests, x64 NSIS generation and extraction.
+  persistence/media tests, browser tests, x64 NSIS generation/extraction, and
+  disposable hosted install/update/uninstall with app-data retention.
 - [ ] Confirm the same revision passes macOS regressions, arm64 app/DMG creation,
   signature/resource inspection and browser tests.
 - [ ] Inspect both artifact manifests: version, revision, workflow run, expected

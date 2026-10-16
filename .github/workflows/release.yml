@@ -116,6 +116,8 @@ jobs:
         run: npm run build:windows
       - name: Inspect x64 GUI executable, NSIS contents and notices
         run: node scripts/stage-release-artifacts.mjs windows "${{ runner.temp }}/ttt-release"
+      - name: Smoke install, update and uninstall with disposable runner data
+        run: pwsh -NoProfile -NonInteractive -File scripts/verify-windows-install.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: ttt-windows

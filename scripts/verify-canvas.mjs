@@ -6,7 +6,7 @@ try {
  server=await createServer({optimizeDeps:{entries:['index.html','tests/*.html']},server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
  browser=await launchBrowser();
  const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>{const originalMatchMedia=window.matchMedia.bind(window);window.densityQueries=[];window.matchMedia=media=>{const query=originalMatchMedia(media);window.densityQueries.push(query);return query;};window.bars=[];window.rings=[];const ellipse=CanvasRenderingContext2D.prototype.ellipse;CanvasRenderingContext2D.prototype.ellipse=function(...args){window.rings.push(args);return ellipse.apply(this,args);};const original=CanvasRenderingContext2D.prototype.fillRect;CanvasRenderingContext2D.prototype.fillRect=function(...args){window.bars.push(args);window.lastBarColor=this.fillStyle;return original.apply(this,args);};});
+ await page.addInitScript(()=>{const originalMatchMedia=window.matchMedia.bind(window);window.densityQueries=[];window.matchMedia=media=>{const query=originalMatchMedia(media);window.densityQueries.push(query);return query;};window.bars=[];window.rings=[];window.currentRings=[];window.paintCount=0;const clear=CanvasRenderingContext2D.prototype.clearRect;CanvasRenderingContext2D.prototype.clearRect=function(...args){window.paintCount++;window.currentRings=[];return clear.apply(this,args);};const ellipse=CanvasRenderingContext2D.prototype.ellipse;CanvasRenderingContext2D.prototype.ellipse=function(...args){window.rings.push(args);window.currentRings.push(args);return ellipse.apply(this,args);};const original=CanvasRenderingContext2D.prototype.fillRect;CanvasRenderingContext2D.prototype.fillRect=function(...args){window.bars.push(args);window.lastBarColor=this.fillStyle;return original.apply(this,args);};});
  await page.goto(`${server.resolvedUrls.local[0]}tests/canvas.html`);const canvas=page.locator('canvas');await canvas.waitFor();
  await page.waitForFunction(()=>window.bars.length>0);
  const bars=await page.evaluate(()=>window.bars);assert(bars.every(b=>b.every(Number.isFinite)),'all rendered histogram rectangle coordinates must be finite');
@@ -30,8 +30,13 @@ try {
   await page.waitForFunction(()=>window.rings.length>0);
   assert((await page.evaluate(()=>window.rings)).every(r=>Number.isFinite(r[2])&&Math.abs(r[2]-r[3])<1e-6),'Traction G reference rings remain circular');
   const measured=await canvas.boundingBox();assert(measured.height>=240&&measured.height<=viewport.height,'Canvas height fits short and wide windows');
-  await canvas.hover({position:{x:measured.width/2,y:measured.height/2}});await page.mouse.wheel(0,-100);
-  await page.waitForTimeout(100);assert((await page.evaluate(()=>window.rings)).every(r=>Math.abs(r[2]-r[3])<1e-6),'Wheel zoom preserves equal G scale');
+  await canvas.hover({position:{x:measured.width/2,y:measured.height/2}});
+  const beforeZoom=await page.evaluate(()=>({paint:window.paintCount,radius:window.currentRings[0][2]}));
+  await page.mouse.wheel(0,-100);
+  // Wheel dispatch returns before React's draw effect; observe the zoomed paint.
+  await page.waitForFunction(before=>window.paintCount>before.paint&&window.currentRings.length>0&&window.currentRings[0][2]!==before.radius,beforeZoom);
+  assert(Math.abs((await page.evaluate(()=>window.currentRings[0][2]))*0.87-beforeZoom.radius)<1e-6,'Wheel event actually paints the requested zoom');
+  assert((await page.evaluate(()=>window.rings)).every(r=>Math.abs(r[2]-r[3])<1e-6),'Wheel zoom preserves equal G scale');
  }
  // A display-density change alone must repaint the existing canvas, preserving its view.
  const ringBeforeDensity=await page.evaluate(()=>window.rings.at(-1).slice(0,4));
@@ -39,10 +44,11 @@ try {
  const cdp=await page.context().newCDPSession(page);
  const viewport=page.viewportSize();
  for(const scale of [1.25,1.5,2,1]){
+  const beforePaint=await page.evaluate(()=>window.paintCount);
   await cdp.send('Emulation.setDeviceMetricsOverride',{...viewport,deviceScaleFactor:scale,mobile:false});
   // CDP changes resolution but emits no native MediaQueryList event; supply that boundary event.
   await page.evaluate(()=>window.densityQueries.slice().forEach(query=>query.dispatchEvent(new MediaQueryListEvent('change',{matches:query.matches,media:query.media}))));
-  await page.waitForTimeout(150);
+  await page.waitForFunction(({paint,scale})=>window.paintCount>paint&&window.currentRings.length>0&&Math.abs(document.querySelector('canvas').width-document.querySelector('canvas').getBoundingClientRect().width*scale)<=1,{paint:beforePaint,scale});
   const density=await canvas.evaluate(el=>({pixels:el.width,css:el.getBoundingClientRect().width,dpr:devicePixelRatio}));
   assert(Math.abs(density.pixels-density.css*scale)<=1,`Canvas backing pixels follow DPR-only transition to ${scale}: ${JSON.stringify(density)}`);
   assert(await canvas.evaluate(el=>el===window.densityCanvas),'Density change preserves the mounted canvas');

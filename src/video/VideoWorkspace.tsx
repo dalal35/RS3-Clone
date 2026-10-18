@@ -30,8 +30,16 @@ const clampHeight=(height:number)=>Math.max(240,Math.min(900,height));
 export function VideoWorkspace(props:VideoWorkspaceProps) {
   const {session,state,availability,telemetryTime,onChange,onSeekTelemetry,onSeekVideo}=props;
   const latest=useRef(props);latest.current=props;
+  const sticky=useRef<HTMLDivElement>(null);
   const host=useRef<HTMLDivElement>(null),video=useRef<HTMLVideoElement>(null),player=useRef<VideoPlayer|null>(null);
   const [sample,setSample]=useState<PlayerSnapshot>(idle);
+  useEffect(()=>{
+    const panel=sticky.current,main=panel?.closest<HTMLElement>('main');if(!panel||!main)return;
+    const update=()=>main.style.setProperty('--video-scroll-offset',getComputedStyle(panel).position==='sticky'?`${Math.ceil(panel.getBoundingClientRect().height)+8}px`:'0px');
+    const observer=new ResizeObserver(update);observer.observe(panel);observer.observe(main);update();
+    return()=>{observer.disconnect();main.style.removeProperty('--video-scroll-offset');};
+  },[]);
+
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[url,setUrl]=useState('');
   const [pending,setPending]=useState<{source:VideoSource;preserve:boolean}|null>(null);
   const [referenceStatus,setReferenceStatus]=useState<'ready'|'missing'|'changed'>('ready');
@@ -153,7 +161,7 @@ export function VideoWorkspace(props:VideoWorkspaceProps) {
     if(save){const current=latest.current.state;latest.current.onChange({...current,preferences:{...current.preferences,panelHeight}});}
   };
   return <section className="video-workspace" aria-label="Video synchronization">
-    <div className="video-sticky-player">
+    <div ref={sticky} className="video-sticky-player">
       <div className="video-section-title"><div><span className="eyebrow">ONBOARD FOOTAGE</span><h2>Video synchronization</h2></div><span className="video-status" role="status">{!state.source?'No footage':nativeYouTube?'YouTube unavailable':usable?sample.state:'Footage unavailable'}</span></div>
       {state.source&&<p className="video-source-name">{state.source.type==='local'?state.source.path:state.source.url}</p>}
       {!usable||nativeYouTube?<div className="video-placeholder">

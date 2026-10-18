@@ -1,10 +1,10 @@
+import {launchBrowser,browserTestEntries} from './browser.mjs';
 // Browser exercises of the React workflow. IPC is simulated; native persistence is tested separately.
-import {launchBrowser} from './browser.mjs';
 import {createServer} from 'vite';
 import assert from 'node:assert/strict';
 let server,browser;
 try{
- server=await createServer({optimizeDeps:{entries:['index.html','tests/*.html']},server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
+ server=await createServer({optimizeDeps:{entries:browserTestEntries},server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
  browser=await launchBrowser();
  const page=await browser.newPage({viewport:{width:1440,height:1000}});
  // Exercise queued-save/analysis ordering even when React effects run slowly.
@@ -43,6 +43,9 @@ try{
  });
  await page.goto(server.resolvedUrls.local[0]);await page.getByRole('heading',{name:'Track one'}).waitFor();
  assert.equal(await page.locator('.import-button kbd').innerText(),'Ctrl O','Windows import hint uses the working Control shortcut');
+ await page.getByRole('button',{name:'Collapse sidebar',exact:true}).waitFor({timeout:2000});
+ assert.equal(await page.locator('.library-entry.active .session-track').innerText(),'one','Explorer displays the actual session name');
+ await page.locator('.segment-speeds').first().waitFor();assert.match(await page.locator('.segment-speeds').first().innerText(),/22\.4/,'Section speed converts 10 m/s to 22.4 mph');
  await page.getByRole('button',{name:'Edit boundaries',exact:true}).click();
  const handle=page.getByRole('slider',{name:'Section boundary 1'});await handle.click();await page.waitForTimeout(150);assert.equal(await handle.evaluate(el=>document.activeElement===el),true,'Clicking a boundary enables keyboard adjustment');await page.keyboard.press('ArrowRight');await page.keyboard.press('ArrowRight');
  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('test-corners')||'null')?.[0]===60);await page.waitForTimeout(150);
@@ -52,12 +55,13 @@ try{
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('test-corners'))[0]),75,'Older analysis cannot reset a newer boundary draft');
  await page.getByRole('button',{name:'Done editing',exact:true}).click();
  await page.getByRole('button',{name:'Time',exact:true}).click();await page.getByRole('button',{name:'Compact',exact:true}).click();
- await page.getByRole('button',{name:/Track two Test/}).click();await page.getByRole('heading',{name:'Track two'}).waitFor();await page.getByText('Saved on this computer').waitFor();
+ await page.getByRole('button',{name:/two Test/}).click();await page.getByRole('heading',{name:'Track two'}).waitFor();await page.getByText('Saved on this computer').waitFor();
  await page.locator('.plot-label').filter({hasText:'mph'}).waitFor();assert.equal(await page.locator('.plot-label').filter({hasText:'mph'}).count(),1,'Another session displays mph');
- await page.getByRole('button',{name:/Track one Test/}).click();await page.getByRole('heading',{name:'Track one'}).waitFor();await page.getByText('Saved on this computer').waitFor();
+ await page.getByRole('button',{name:/one Test/}).click();await page.getByRole('heading',{name:'Track one'}).waitFor();await page.getByText('Saved on this computer').waitFor();
  await page.locator('.plot-label').filter({hasText:'mph'}).waitFor();assert.equal(await page.locator('.plot-label').filter({hasText:'mph'}).count(),1,'Switching retains mph');assert.equal(await page.locator('.segmented[aria-label="Horizontal axis"] button.active').innerText(),'Time','Switching restores axis');
  await page.reload();await page.getByRole('heading',{name:'Track one'}).waitFor();await page.locator('.plot-label').filter({hasText:'mph'}).waitFor();assert.equal(await page.locator('.plot-label').filter({hasText:'mph'}).count(),1,'Reload retains mph');assert.equal(await page.locator('.segmented[aria-label="Horizontal axis"] button.active').innerText(),'Time');assert.equal(await page.getByRole('button',{name:'Comfortable',exact:true}).count(),1,'Reload restores graph density');
- await page.locator('.library-entry').filter({hasText:'Track one'}).getByRole('button',{name:'Refresh',exact:true}).click();
+ await page.locator('.library-entry').filter({hasText:/^one/}).getByRole('button',{name:'Session actions',exact:true}).click();
+ await page.getByRole('menuitem',{name:'Refresh',exact:true}).click();
  assert.equal(await page.locator('main').getAttribute('inert'),'','Workspace is frozen during explicit refresh');
  await page.waitForFunction(()=>!document.querySelector('main').inert&&document.querySelector('.segmented[aria-label="Horizontal axis"] button.active')?.textContent==='Distance');
  await page.locator('.plot-label').filter({hasText:'mph'}).waitFor();assert.equal(await page.locator('.plot-label').filter({hasText:'mph'}).count(),1,'Changed source retains mph');
@@ -66,25 +70,28 @@ try{
  const originals=await page.evaluate(()=>JSON.parse(localStorage.getItem('test-library')).entries.map(e=>({id:e.id,workspace:e.workspace})));
  // Existing restoreAdvanced supplies an empty toolViews default on reopening.
  const normalizeOriginals=entries=>entries.map(original=>{if(original.workspace?.advanced?.config)original.workspace.advanced.config.toolViews??={};return original;});
- await page.getByRole('checkbox',{name:'Select Track one for merging'}).check();
+ await page.getByRole('button',{name:'Session explorer actions',exact:true}).click();await page.getByRole('menuitem',{name:'Merge sessions',exact:true}).click();
+ await page.getByRole('checkbox',{name:'Select one for merging'}).check();
  assert.equal(await page.getByRole('button',{name:'Merge Sessions',exact:true}).isDisabled(),true);
- await page.getByRole('checkbox',{name:'Select Track two for merging'}).check();
+ await page.getByRole('checkbox',{name:'Select two for merging'}).check();
  await page.evaluate(()=>window.rejectMergeDate=true);await page.getByRole('button',{name:'Merge Sessions',exact:true}).click();
  await page.getByRole('alert').filter({hasText:'ambiguous'}).waitFor();await page.evaluate(()=>window.rejectMergeDate=false);
  await page.getByRole('button',{name:'Merge Sessions',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Merge sessions'});await dialog.waitFor();assert.match(await dialog.innerText(),/2026-10-14/);assert.match(await dialog.innerText(),/4 laps/);assert.match(await dialog.innerText(),/overlap/);await page.screenshot({path:'.tools/session-merge-preview.png'});
  assert.equal(await dialog.getByRole('button',{name:'Confirm merge',exact:true}).isDisabled(),true);
  await dialog.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await page.locator('.library-entry').count(),2);
+ await page.getByRole('button',{name:'Session explorer actions',exact:true}).click();await page.getByRole('menuitem',{name:'Merge sessions',exact:true}).click();
+ await page.getByRole('checkbox',{name:'Select one for merging'}).check();await page.getByRole('checkbox',{name:'Select two for merging'}).check();
  await page.getByRole('button',{name:'Merge Sessions',exact:true}).click();await dialog.getByRole('checkbox',{name:'I have reviewed these warnings'}).check();
  await dialog.getByRole('button',{name:'Confirm merge',exact:true}).evaluate(el=>{el.click();el.click();});
- await page.getByRole('heading',{name:'Merged · Track one'}).waitFor();await page.screenshot({path:'.tools/session-merge-workspace.png'});assert.equal(await page.locator('.library-entry').count(),3);assert.equal(await page.locator('.lap-row').count(),4);assert.equal(await page.evaluate(()=>window.mergeCalls),1);
+ await page.getByRole('heading',{name:'Merged · Track one'}).waitFor();await page.screenshot({path:'.tools/session-merge-workspace.png'});assert.equal(await page.locator('.library-entry').count(),3);assert.equal(await page.locator('.lap-row').count(),4);assert(await page.locator('.session-region').evaluate(el=>el.getBoundingClientRect().height<240),'Small session libraries do not reserve empty navigation space');assert.equal(await page.evaluate(()=>window.mergeCalls),1);
  await page.getByRole('button',{name:'Compare lap 3',exact:true}).click();await page.waitForTimeout(200);
  assert.match(await page.locator('.lap-list').innerText(),/two.xrk/);
  await page.reload();await page.getByRole('heading',{name:'Merged · Track one'}).waitFor();await page.getByText('Saved on this computer').waitFor();
- await page.getByRole('button',{name:'Time',exact:true}).click();await page.getByRole('button',{name:'Unmerge',exact:true}).click();
+ await page.getByRole('button',{name:'Time',exact:true}).click();await page.locator('.library-entry.active').getByRole('button',{name:'Session actions',exact:true}).click();await page.getByRole('menuitem',{name:'Unmerge',exact:true}).click();
  await page.getByRole('heading',{name:'Track one',exact:true}).waitFor();await page.waitForTimeout(250);assert.equal(await page.locator('.library-entry').count(),2);
  assert.deepEqual(normalizeOriginals(await page.evaluate(()=>JSON.parse(localStorage.getItem('test-library')).entries.map(e=>({id:e.id,workspace:e.workspace})))),normalizeOriginals(originals),'Unmerge preserves original workspaces through existing default normalization, including queued saves');
- await page.locator('.library-entry').filter({hasText:'Track two'}).getByRole('button',{name:'Remove',exact:true}).click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('test-library')).entries.length===1);assert.equal(await page.locator('.library-entry').count(),1);
+ await page.locator('.library-entry').filter({hasText:/^two/}).getByRole('button',{name:'Session actions',exact:true}).click();await page.getByRole('menuitem',{name:'Remove',exact:true}).click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('test-library')).entries.length===1);assert.equal(await page.locator('.library-entry').count(),1);
  await page.keyboard.press('Control+o');await page.waitForFunction(()=>window.openCalls===1);
  await page.evaluate(()=>localStorage.setItem('test-platform','MacIntel'));await page.reload();await page.getByRole('heading',{name:'Track one'}).waitFor();
  assert.equal(await page.locator('.import-button kbd').innerText(),'⌘ O','macOS keeps the Command shortcut hint');

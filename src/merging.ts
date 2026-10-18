@@ -23,6 +23,14 @@ export function canSeekVideoLap(session:Session,fromId:string,toId:string):boole
   return !!from&&!!to&&from.sourceSession.id===to.sourceSession.id;
 }
 export const lapDisplayNumber=(session:Session,id:string)=>session.merge?.preview.laps.find(l=>l.id===id)?.displayNumber??session.laps.find(l=>l.id===id)?.number??0;
+export function lapBoundaryLabel(session:Session,id:string):string {
+  const context=videoSourceContext(session,id);
+  if(!context)return '';
+  const laps=context.sourceSession.laps;
+  const lap=laps.find(l=>l.id===context.sourcePrimaryId);
+  if(!lap||lap.complete)return '';
+  return lap.id===laps[0]?.id?'OUT LAP':'IN LAP';
+}
 export function lapSourceLabel(session:Session,id:string):string {
   const context=videoSourceContext(session,id);if(!session.merge||!context)return '';
   const lap=context.sourceSession.laps.find(l=>l.id===context.sourcePrimaryId);

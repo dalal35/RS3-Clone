@@ -26,6 +26,7 @@ test('existing native library and frontend preference identities are retained',(
  assert.match(read('src-tauri/src/library.rs'),/directory.join\("library.json"\)/);
  assert.match(read('src/App.tsx'),/localStorage.getItem\('apex-theme'\)/);
  assert.match(read('src/App.tsx'),/localStorage.setItem\('apex-theme',theme\)/);
+ assert.match(read('src/sessionExplorer.ts'),/const preferenceKey = 'apex-telemetry:session-explorer'/);
 });
 test('all dark and light theme tokens and typography stay unchanged',()=>{
  const css=read('src/styles.css');

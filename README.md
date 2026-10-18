@@ -4,6 +4,8 @@ A local-first telemetry workspace targeting Apple Silicon macOS and Windows 10/1
 
 **Windows status:** native x64 decoding/persistence tests, NSIS extraction and hosted installation/update/uninstall pass in CI. Physical Windows GUI acceptance remains pending. See the [validation record](docs/windows-validation.md) for exact CI results and remaining physical Windows acceptance.
 
+The macOS 0.1.1 release includes the complete implemented workspace, including the session explorer and responsive navigation. See [release notes](docs/release-notes-0.1.1.md) and [macOS validation](docs/macos-release-validation.md).
+
 ## Install on macOS
 
 Requires an Apple Silicon Mac (M1 or newer) running macOS 13 Ventura or later. No Node, Rust, Xcode, or development server is needed to run the app.
@@ -20,7 +22,7 @@ The existing bundle ID, `com.dalal35.apextelemetry`, is retained so upgrades kee
 
 The Windows build targets **Windows 10/11, x64**, using WebView2 and Media Foundation. Windows ARM64 and 32-bit builds are not provided. On Windows N, install Microsoft's [Media Feature Pack](https://support.microsoft.com/en-us/windows/experience/platform-variants/media-feature-pack-for-windows-10-11-n-february-2023) before launching: missing Media Foundation DLLs can prevent process startup. Available codecs still determine which MP4/MOV files can play or decode; an extension does not guarantee support.
 
-1. Download `Ten Tenths Telemetry_0.1.1_x64-setup.exe` from [GitHub Releases](https://github.com/dalal35/RS3-Clone/releases), or obtain the verified `ttt-windows` artifact from a successful Actions run.
+1. Windows is preserved for the next development phase; the 0.1.1 release publishes macOS assets only. Obtain a `ttt-windows` artifact from a successful Windows Actions run when testing Windows.
 2. Run the setup program for your current user. The NSIS installer is configured for per-user installation, Start Menu integration and the standard desktop-shortcut option. Hosted CI verifies installation, same-version update and uninstallation; physical GUI and legacy-upgrade checks remain pending.
 3. If WebView2 is absent, setup downloads its bootstrapper and installs the runtime silently. That first installation requires internet; local telemetry and supported local video can operate offline afterward. End users do not need Node, Rust, Python, Visual Studio or FFmpeg.
 4. Launch Ten Tenths Telemetry and select your existing XRK files and local video. Keep original files available; importing does not move or duplicate them.
@@ -80,7 +82,7 @@ npm run build:windows
 
 Browser verifiers use existing local Chrome on macOS or Playwright Chromium elsewhere. Run `npx playwright install chromium` before those checks. Real-XRK Rust integration suites and `test:plots`/`test:advanced` require the private ignored recordings in `data/`; do not upload those recordings to public CI. The Windows decoder tests copy pinned original H.264/AAC fixtures with checked SHA-256 hashes and inspected timestamps/B-pictures; no test encoder or FFmpeg is required on the runner. They must execute on Windows rather than being counted as passing when compiled out.
 
-Reopening restores the active session, lap selections, channels, speed units, graph layout and compatible zoom. Missing files remain visible: use Locate to reconnect the same recording. Modified files require an explicit Refresh, which clears incompatible workspace state and corner edits. Removing a library entry never deletes its XRK file.
+Speed displays use mph; source telemetry and internal calculations retain their original units. Reopening restores the active session, lap selections, channels, graph layout and compatible zoom. Missing files remain visible: use Locate to reconnect the same recording. Modified files require an explicit Refresh, which clears incompatible workspace state and corner edits. Removing a library entry never deletes its XRK file.
 
 Use Edit boundaries on the circuit trace to adjust the automatic section boundaries, then drag a handle or use its arrow keys. Overrides belong to the selected primary lap and are stored in reference-track meters. Reset to automatic restores the detected sections; recorded telemetry and GPS alignment remain unchanged.
 
@@ -88,24 +90,11 @@ Use Edit boundaries on the circuit trace to adjust the automatic section boundar
 
 Follow the [release preflight and failure-handling checklist](docs/release-preflight.md) before tagging or publishing.
 
-The [release workflow](.github/workflows/release.yml) publishes only for a `v*` tag push. It checks matching package, lockfile, Tauri and Cargo versions. Separate `macos-15` Apple Silicon and `windows-latest` x64 MSVC jobs run shared frontend/browser and fixture-independent native tests, build native installers, inspect architecture/resources, and stage artifacts with SHA-256 manifests. The Windows job verifies its native decoder suite is actually enabled. Both builds must succeed before publication.
+The [release workflow](.github/workflows/release.yml) defaults to macOS-only validation and publication. A new matching `v*` tag builds the complete Apple Silicon application and DMG, verifies the exact artifact set and checksums, uploads a draft, verifies uploaded assets, and publishes a stable release. Windows does not gate macOS releases. Set the repository variable `RELEASE_PLATFORMS=all` for future cross-platform tag releases; both jobs must then succeed. Manual dispatch supports macOS or all-platform build validation and never publishes.
 
-The publisher verifies both platforms came from the same revision/workflow run, creates a draft beta, uploads the complete set and checks remote asset names/sizes before making it public. A failed build publishes nothing; a failed upload leaves a draft. Existing releases, including stale drafts, cause safe failure and require deliberate resolution; assets are not clobbered. Build jobs have `contents: read`; only the publisher has `contents: write` using `GITHUB_TOKEN`. Apple ad-hoc signing is retained; no signing certificate, updater secret or Windows signing secret is added.
+Versions must match across package/lockfiles, Cargo and Tauri metadata. Existing releases and tags are never overwritten. The publisher requires assets from the same revision and workflow run. Build jobs have read-only contents access; only the gated publisher can write releases. Ad-hoc signing remains in use without Apple notarization. No automatic updater is configured.
 
-`workflow_dispatch` is **build/test/artifacts only** and cannot publish. Once the updated workflow is available on an authorized remote ref and registered for dispatch, select **Actions → Release macOS and Windows → Run workflow**, then download `ttt-windows` and `ttt-macos` from that run. Dispatch cannot test an unpushed local working tree. The implementation is pushed; native build results and remaining acceptance gates are recorded in [validation](docs/windows-validation.md).
-
-Before an authorized release, run native checks on both operating systems, including the private-XRK suites locally, and complete installed-app acceptance. Useful local preflight commands are:
-
-```sh
-npm test
-npm run test:release
-cargo test --locked --manifest-path src-tauri/Cargo.toml
-npm run build:mac
-# On Windows:
-npm run build:windows
-```
-
-Commit/push/tag only with explicit authorization. A matching new tag publishes a beta after both platform jobs and complete upload checks succeed. Never overwrite an existing release/tag to reuse its version. For later releases, update all three app versions and `package-lock.json` together before tagging. A hosted build is not installed-app acceptance: check Gatekeeper/SmartScreen, real dialogs/video, standard-user install/upgrade/uninstall and 100/125/150/200% Windows display scaling separately. See [the validation record](docs/windows-validation.md) for completed checks and remaining gaps.
+Private XRK integration suites run locally; fixture-independent tests run in hosted CI. Browser IPC simulation and Rust media tests supplement packaged native acceptance. Release notes document exact coverage and remaining limits. Windows source, its native tests and packaging automation remain intact; this macOS release does not claim new Windows acceptance.
 
 ## Advanced analysis
 
@@ -128,3 +117,9 @@ Manual video synchronization and persisted segment mappings remain shared. YouTu
 The product is now **Ten Tenths Telemetry**. The original theme, bundle identifier, executable basename and persistence keys are retained. This release advances the package version to 0.1.1 without overwriting the existing v0.1.0 tag. Windows installer upgrade detection deliberately retains its legacy registry keys while presenting the new product name. Native Windows upgrade acceptance remains required; see [Windows rebrand compatibility](docs/branding/windows-compatibility.md).
 
 Editable SVG assets, previews, exploration and icon inventory are in [the branding guide](docs/branding/README.md). Reproduce the icons with `node scripts/generate-brand-assets.mjs`; run branding checks with `npm run test:release` and `npm run test:branding`.
+
+## Session explorer and responsive layout
+
+The session explorer provides persisted expanded, compact and hidden navigation, independent session sorting/grouping and lap ordering, contextual Locate/Refresh/Remove actions, and a temporary merge selection mode. Merge previews preserve original recordings and source-specific lap/channel/video provenance; unmerging removes only the virtual session.
+
+At narrow widths navigation becomes a keyboard-accessible modal drawer. Telemetry, Advanced and Video layouts adapt to available space down to the 600×500 native window minimum. Sidebar changes and resizing retain session/lap selections, chart zoom, channels, analysis settings and video mappings.

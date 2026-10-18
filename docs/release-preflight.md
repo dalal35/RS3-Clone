@@ -2,7 +2,7 @@
 
 Release owner checks this list against the exact commit to be tagged. A branch
 build is validation only; publication requires a matching `v<version>` tag and
-successful macOS and Windows jobs from that tag's workflow run.
+successful selected-platform jobs from that tag's workflow run. The default release scope is macOS only; set `RELEASE_PLATFORMS=all` for future cross-platform releases.
 
 ## Preflight checklist
 
@@ -13,21 +13,21 @@ successful macOS and Windows jobs from that tag's workflow run.
   public also exposes its existing history and releases.
 - [ ] Use a new version consistent across npm package/lockfile, Cargo package/
   lockfile and Tauri metadata. Check remote tags/releases; never overwrite one.
-- [ ] Confirm Ten Tenths Telemetry names/icons appear in both installers while
+- [ ] Confirm Ten Tenths Telemetry names/icons appear in each selected installer while
   retaining the existing bundle identifier, executable and library identity.
 - [ ] Run relevant local regressions and obtain independent acceptance review.
   Resolve critical findings before tagging. Record physical-device gaps honestly.
-- [ ] Confirm the exact branch revision passes native Windows MSVC compilation,
+- [ ] For an all-platform release only, confirm the exact branch revision passes native Windows MSVC compilation,
   persistence/media tests, browser tests, x64 NSIS generation/extraction, and
   disposable hosted install/update/uninstall with app-data retention.
-- [ ] Confirm the same revision passes macOS regressions, arm64 app/DMG creation,
+- [ ] Confirm the release revision passes macOS regressions, arm64 app/DMG creation,
   signature/resource inspection and browser tests.
-- [ ] Inspect both artifact manifests: version, revision, workflow run, expected
+- [ ] Inspect all selected-platform artifact manifests: version, revision, workflow run, expected
   names, nonempty sizes and SHA-256. Never mix artifacts from different runs.
-- [ ] Push a new version tag only after validation. Require both tagged platform
+- [ ] Push a new version tag only after validation. Require all selected tagged platform
   jobs to pass again before the publisher can run.
-- [ ] Verify the draft has the complete Windows `.exe`, macOS `.dmg` and app
-  archive plus `SHA256SUMS`; verify uploaded names/sizes before publishing.
+- [ ] Verify the draft has the macOS `.dmg` and app
+  archive plus `SHA256SUMS` (and Windows `.exe` only for all-platform releases); verify uploaded names/sizes before publishing.
 - [ ] After publication, download assets without authentication and compare their
   SHA-256 hashes to the validated manifests. Confirm the public release URL.
 
@@ -41,7 +41,7 @@ supports this flag; keep macOS bundling unchanged.
 
 | Failure | Required response |
 |---|---|
-| Native build, test or artifact inspection fails | Do not publish. Diagnose the failed step, retain its logs, fix source and repeat affected tests and both-platform validation. Do not skip required assertions. |
+| Native build, test or artifact inspection fails | Do not publish. Diagnose the failed step, retain its logs, fix source and repeat affected tests and selected-platform validation. Do not skip required assertions. |
 | Transient runner/download failure with unchanged source | Retry the failed job/run; require a complete, same-run artifact set before publication. |
 | Required artifact missing, corrupted or from another revision/run | Stop publication. Rebuild/stage a consistent set; never substitute an older installer. |
 | New source fix needed after a release tag was pushed | Preserve that tag. Increment the patch version and validate a new tag; do not force-move tags. |

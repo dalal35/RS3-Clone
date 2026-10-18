@@ -10,20 +10,55 @@ import {publishRelease} from './publish-release.mjs';
 
 function sandbox(t){const root=mkdtempSync(join(tmpdir(),'apex-release-'));t.after(()=>rmSync(root,{recursive:true,force:true}));return root;}
 function seedVersion(root){mkdirSync(join(root,'src-tauri'));writeFileSync(join(root,'package.json'),JSON.stringify({version:'0.1.0'}));writeFileSync(join(root,'package-lock.json'),JSON.stringify({version:'0.1.0',packages:{'':{version:'0.1.0'}}}));writeFileSync(join(root,'src-tauri/tauri.conf.json'),JSON.stringify({version:'0.1.0'}));writeFileSync(join(root,'src-tauri/Cargo.toml'),'[package]\nname = "apex-telemetry"\nversion = "0.1.0"\n');}
-function seedArtifacts(root){for(const platform of ['macos','windows']){const dir=join(root,platform);mkdirSync(dir);const names=platform==='macos'?['Ten Tenths Telemetry_0.1.0_aarch64.dmg','Ten Tenths Telemetry_0.1.0_aarch64.app.tar.gz']:['Ten Tenths Telemetry_0.1.0_x64-setup.exe'];const assets=names.map(name=>{const bytes=Buffer.from(`synthetic ${name}`);writeFileSync(join(dir,name),bytes);return {name,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};});writeFileSync(join(dir,'manifest.json'),JSON.stringify({schema:1,platform,target:platform==='macos'?'aarch64-apple-darwin':'x86_64-pc-windows-msvc',version:'0.1.0',revision:'a'.repeat(40),runId:'42',assets}));}}
+function seedArtifacts(root){writeFileSync(join(root,'source-notes.md'),'Complete platform release notes.\n');for(const platform of ['macos','windows']){const dir=join(root,platform);mkdirSync(dir);const names=platform==='macos'?['Ten Tenths Telemetry_0.1.0_aarch64.dmg','Ten Tenths Telemetry_0.1.0_aarch64.app.tar.gz']:['Ten Tenths Telemetry_0.1.0_x64-setup.exe'];const assets=names.map(name=>{const bytes=Buffer.from(`synthetic ${name}`);writeFileSync(join(dir,name),bytes);return {name,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};});writeFileSync(join(dir,'manifest.json'),JSON.stringify({schema:1,platform,target:platform==='macos'?'aarch64-apple-darwin':'x86_64-pc-windows-msvc',version:'0.1.0',revision:'a'.repeat(40),runId:'42',assets}));}}
 test('version checks include lockfile and tag equality, dispatch permits a branch',t=>{const root=sandbox(t);seedVersion(root);assert.equal(verifyVersion(root,{GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF_NAME:'feature'}),'0.1.0');assert.throws(()=>verifyVersion(root,{GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/tags/v0.2.0',GITHUB_REF_NAME:'v0.2.0'}),/Tag/);writeFileSync(join(root,'package-lock.json'),'{"version":"0.2.0","packages":{"":{"version":"0.2.0"}}}');assert.throws(()=>verifyVersion(root,{}),/lockfile/);});
 test('partial or tampered artifact sets cannot publish',t=>{const root=sandbox(t);mkdirSync(join(root,'macos'));assert.throws(()=>verifyArtifacts(root,'0.1.0'));rmSync(join(root,'macos'),{recursive:true});seedArtifacts(root);assert.equal(verifyArtifacts(root,'0.1.0').length,3);writeFileSync(join(root,'windows/Ten Tenths Telemetry_0.1.0_x64-setup.exe'),'changed');assert.throws(()=>verifyArtifacts(root,'0.1.0'),/checksum|size/);});
 test('empty, wrong-architecture, traversal and mixed-run manifests are rejected',t=>{for(const mutation of ['empty','architecture','traversal','run']){const root=join(sandbox(t),mutation);mkdirSync(root);seedArtifacts(root);const p=join(root,'windows/manifest.json'),manifest=JSON.parse(readFileSync(p));if(mutation==='empty')manifest.assets=[];if(mutation==='architecture')manifest.target='aarch64-pc-windows-msvc';if(mutation==='traversal')manifest.assets[0].name='../outside.exe';if(mutation==='run')manifest.runId='43';writeFileSync(p,JSON.stringify(manifest));assert.throws(()=>verifyArtifacts(root,'0.1.0'),mutation);}});
 test('Windows PE must be x64 GUI subsystem',()=>{const pe=Buffer.alloc(512);pe.write('MZ');pe.writeUInt32LE(128,0x3c);pe.write('PE\0\0',128);pe.writeUInt16LE(0x8664,132);pe.writeUInt16LE(0x20b,152);pe.writeUInt16LE(2,220);verifyWindowsBinary(pe);pe.writeUInt16LE(3,220);assert.throws(()=>verifyWindowsBinary(pe),/console/);pe.writeUInt16LE(2,220);pe.writeUInt16LE(0x14c,132);assert.throws(()=>verifyWindowsBinary(pe),/x64/);});
 const tagEnv={GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/tags/v0.1.0',GITHUB_REF_NAME:'v0.1.0',GITHUB_REPOSITORY:'test/repo',GITHUB_SHA:'a'.repeat(40),GITHUB_RUN_ID:'42'};
-test('dispatch and partial artifacts never call release operations',t=>{const root=sandbox(t),calls=[];assert.throws(()=>publishRelease(root,'0.1.0',{...tagEnv,GITHUB_EVENT_NAME:'workflow_dispatch'},args=>calls.push(args)),/tag push/);assert.throws(()=>publishRelease(root,'0.1.0',tagEnv,args=>calls.push(args)));assert.equal(calls.length,0);});
-test('failed upload leaves a draft, and publication follows complete upload',t=>{const root=sandbox(t);seedArtifacts(root);const calls=[];assert.throws(()=>publishRelease(root,'0.1.0',tagEnv,args=>{calls.push(args);if(args[1]==='upload')throw Error('upload failed');}),/upload failed/);assert.equal(calls.length,2);assert(calls[0].includes('--draft'));assert(!calls.some(c=>c[1]==='edit'));calls.length=0;publishRelease(root,'0.1.0',tagEnv,args=>{calls.push(args);if(args[1]==='view')return JSON.stringify({isDraft:true,assets:[...verifyArtifacts(root,'0.1.0').map(f=>({name:f.name,size:f.size})),{name:'SHA256SUMS',size:statSync(join(root,'SHA256SUMS')).size}]});});assert.deepEqual(calls.map(c=>c[1]),['create','upload','view','edit']);assert(calls[3].includes('--draft=false'));});
-test('remote incomplete upload is not published even if upload command succeeds',t=>{const root=sandbox(t);seedArtifacts(root);const calls=[];assert.throws(()=>publishRelease(root,'0.1.0',tagEnv,args=>{calls.push(args);if(args[1]==='view')return JSON.stringify({isDraft:true,assets:[]});}),/incomplete/);assert(!calls.some(c=>c[1]==='edit'));});
-test('existing release creation failure never uploads or overwrites',t=>{const root=sandbox(t);seedArtifacts(root);const calls=[];assert.throws(()=>publishRelease(root,'0.1.0',tagEnv,args=>{calls.push(args);throw Error('already exists');}),/already exists/);assert.equal(calls.length,1);assert(!calls.flat().includes('--clobber'));});
+function releaseEnv(root,overrides={}){return {...tagEnv,RELEASE_NOTES_FILE:join(root,'source-notes.md'),...overrides};}
+test('dispatch and partial artifacts never call release operations',t=>{const root=sandbox(t),calls=[];assert.throws(()=>publishRelease(root,'0.1.0',releaseEnv(root,{GITHUB_EVENT_NAME:'workflow_dispatch'}),args=>calls.push(args)),/tag push/);assert.throws(()=>publishRelease(root,'0.1.0',releaseEnv(root),args=>calls.push(args)));assert.equal(calls.length,0);});
+test('failed upload leaves a draft, and publication follows complete upload',t=>{const root=sandbox(t);seedArtifacts(root);const calls=[];assert.throws(()=>publishRelease(root,'0.1.0',releaseEnv(root),args=>{calls.push(args);if(args[1]==='upload')throw Error('upload failed');}),/upload failed/);assert.equal(calls.length,2);assert(calls[0].includes('--draft'));assert(!calls.some(c=>c[1]==='edit'));calls.length=0;publishRelease(root,'0.1.0',releaseEnv(root),args=>{calls.push(args);if(args[1]==='view')return JSON.stringify({isDraft:true,assets:[...verifyArtifacts(root,'0.1.0').map(f=>({name:f.name,size:f.size})),{name:'SHA256SUMS',size:statSync(join(root,'SHA256SUMS')).size}]});});assert.deepEqual(calls.map(c=>c[1]),['create','upload','view','edit']);assert(calls[3].includes('--draft=false'));});
+test('remote incomplete upload is not published even if upload command succeeds',t=>{const root=sandbox(t);seedArtifacts(root);const calls=[];assert.throws(()=>publishRelease(root,'0.1.0',releaseEnv(root),args=>{calls.push(args);if(args[1]==='view')return JSON.stringify({isDraft:true,assets:[]});}),/incomplete/);assert(!calls.some(c=>c[1]==='edit'));});
+test('existing release creation failure never uploads or overwrites',t=>{const root=sandbox(t);seedArtifacts(root);const calls=[];assert.throws(()=>publishRelease(root,'0.1.0',releaseEnv(root),args=>{calls.push(args);throw Error('already exists');}),/already exists/);assert.equal(calls.length,1);assert(!calls.flat().includes('--clobber'));});
 
 test('branch push validates package versions without requiring a release tag',t=>{
  const root=sandbox(t);seedVersion(root);
  assert.equal(verifyVersion(root,{GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/fix/dedicated-advanced-workspace',GITHUB_REF_NAME:'fix/dedicated-advanced-workspace'}),'0.1.0');
  assert.equal(verifyVersion(root,tagEnv),'0.1.0');
  assert.throws(()=>verifyVersion(root,{...tagEnv,GITHUB_REF_NAME:'v0.2.0'}),/Tag/);
+});
+
+test('macOS-only artifact verification requires both Mac assets without Windows',t=>{
+ const root=sandbox(t);seedArtifacts(root);rmSync(join(root,'windows'),{recursive:true});
+ assert.equal(verifyArtifacts(root,'0.1.0',{platforms:['macos']}).length,2);
+ assert.throws(()=>verifyArtifacts(root,'0.1.0'),/ENOENT/);
+ rmSync(join(root,'macos/Ten Tenths Telemetry_0.1.0_aarch64.app.tar.gz'));
+ assert.throws(()=>verifyArtifacts(root,'0.1.0',{platforms:['macos']}),/ENOENT|Unexpected staged files/);
+});
+test('macOS-only publisher uploads only verified Mac assets and describes the selected platform',t=>{
+ const root=sandbox(t);seedArtifacts(root);rmSync(join(root,'windows'),{recursive:true});const calls=[];
+ writeFileSync(join(root,'source-notes.md'),'Complete Apple Silicon feature release.\n');
+ publishRelease(root,'0.1.0',releaseEnv(root,{RELEASE_PLATFORMS:'macos'}),args=>{
+  calls.push(args);
+  if(args[1]==='view')return JSON.stringify({isDraft:true,assets:[...verifyArtifacts(root,'0.1.0',{platforms:['macos']}).map(f=>({name:f.name,size:f.size})),{name:'SHA256SUMS',size:statSync(join(root,'SHA256SUMS')).size}]});
+ });
+ assert.deepEqual(calls.map(c=>c[1]),['create','upload','view','edit']);
+ assert.doesNotMatch(readFileSync(join(root,'release-notes.md'),'utf8'),/Download the x64|Windows releases/);
+ assert.match(readFileSync(join(root,'release-notes.md'),'utf8'),/Complete Apple Silicon feature release/);
+ assert.match(readFileSync(join(root,'release-notes.md'),'utf8'),/Build revision:/);
+ assert(!calls[0].includes('--prerelease'));
+ assert(!calls[0].some(arg=>arg.endsWith(' Beta')));
+ assert(calls.at(-1).includes('--prerelease=false'));
+ assert(calls.at(-1).includes('--latest=true'));
+});
+test('unknown or empty platform sets cannot weaken release verification',t=>{
+ const root=sandbox(t);seedArtifacts(root);
+ for(const platforms of [[],['linux'],['macos','macos']])assert.throws(()=>verifyArtifacts(root,'0.1.0',{platforms}),/platform/i);
+ assert.throws(()=>publishRelease(root,'0.1.0',releaseEnv(root,{RELEASE_PLATFORMS:'invalid'}),()=>assert.fail('must not publish')),/platform/i);
+});
+
+test('publication fails before remote operations when checked-in release notes are missing',t=>{
+ const root=sandbox(t);seedArtifacts(root);
+ assert.throws(()=>publishRelease(root,'0.1.0',releaseEnv(root,{RELEASE_NOTES_FILE:join(root,'missing-notes.md')}),()=>assert.fail('must not publish')),/ENOENT/);
 });

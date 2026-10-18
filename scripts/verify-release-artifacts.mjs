@@ -13,9 +13,15 @@ export function verifyWindowsBinary(bytes){
  assert.equal(bytes.readUInt16LE(pe+24),0x20b,'Windows binary must be PE32+');
  assert.equal(bytes.readUInt16LE(pe+24+68),2,'Release binary must use GUI subsystem (no console)');
 }
+export function releasePlatforms(mode='all'){
+ assert(['macos','all'].includes(mode),'Unknown release platform selection');
+ return mode==='macos'?['macos']:['macos','windows'];
+}
 export function verifyArtifacts(root,version,expected={}){
+ const platforms=expected.platforms??releasePlatforms();
+ assert(Array.isArray(platforms)&&platforms.length>0&&new Set(platforms).size===platforms.length&&platforms.every(p=>['macos','windows'].includes(p)),'Invalid release platforms');
  const files=[],identities=[];
- for(const platform of ['macos','windows']){
+ for(const platform of platforms){
   const dir=join(root,platform),manifest=JSON.parse(readFileSync(join(dir,'manifest.json'),'utf8'));
   assert.equal(manifest.schema,1,'Unknown artifact manifest');
   assert.equal(manifest.platform,platform);
@@ -41,7 +47,7 @@ export function verifyArtifacts(root,version,expected={}){
    files.push({path,name:asset.name,size:asset.size,sha256:asset.sha256});
   }
  }
- assert.equal(identities[0],identities[1],'Artifacts came from different builds/runs');
+ assert(identities.every(identity=>identity===identities[0]),'Artifacts came from different builds/runs');
  return files;
 }
 export function writeChecksums(root,files){
@@ -50,7 +56,7 @@ export function writeChecksums(root,files){
  return path;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const files=verifyArtifacts(process.argv[2],process.argv[3],{revision:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID});
+ const files=verifyArtifacts(process.argv[2],process.argv[3],{revision:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,platforms:releasePlatforms(process.env.RELEASE_PLATFORMS)});
  writeChecksums(process.argv[2],files);
  console.log(`Verified ${files.length} release artifacts with SHA-256 checksums.`);
 }

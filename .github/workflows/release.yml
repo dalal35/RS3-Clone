@@ -1,12 +1,23 @@
-name: Release macOS and Windows
+name: Release Ten Tenths Telemetry
 
 on:
   push:
     branches:
-      - 'fix/dedicated-advanced-workspace' # Build-only validation; publisher requires a tag.
+      - main # Build-only validation; publisher requires a tag.
     tags:
       - 'v*'
   workflow_dispatch: # Build/test/artifacts only; never publishes a release.
+    inputs:
+      platforms:
+        description: Native platforms to validate
+        type: choice
+        default: macos
+        options: [macos, all]
+
+# Tags default to macOS only. Set repository variable RELEASE_PLATFORMS=all
+# when resuming cross-platform releases; dispatch can validate either mode.
+env:
+  RELEASE_PLATFORMS: ${{ inputs.platforms || vars.RELEASE_PLATFORMS || 'macos' }}
 
 permissions:
   contents: read
@@ -56,6 +67,7 @@ jobs:
       - name: Browser workflows (simulated IPC, not native GUI acceptance)
         run: |
           npm run test:branding
+          npm run test:sidebar
           npm run test:workflow
           npm run test:canvas
           npm run test:video
@@ -73,6 +85,7 @@ jobs:
           compression-level: 0
 
   windows:
+    if: (inputs.platforms || vars.RELEASE_PLATFORMS || 'macos') == 'all'
     name: Windows x64 MSVC build and tests
     runs-on: windows-latest
     steps:
@@ -109,6 +122,7 @@ jobs:
       - name: Browser workflows (simulated IPC, not native GUI acceptance)
         run: |
           npm run test:branding
+          npm run test:sidebar
           npm run test:workflow
           npm run test:canvas
           npm run test:video
@@ -126,9 +140,13 @@ jobs:
           compression-level: 0
 
   publish:
-    name: Publish complete beta release
+    name: Publish verified native release
     needs: [macos, windows]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    if: >-
+      always() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') &&
+      needs.macos.result == 'success' &&
+      (((inputs.platforms || vars.RELEASE_PLATFORMS || 'macos') == 'macos' && needs.windows.result == 'skipped') ||
+       ((inputs.platforms || vars.RELEASE_PLATFORMS || 'macos') == 'all' && needs.windows.result == 'success'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -144,12 +162,13 @@ jobs:
           name: ttt-macos
           path: release-artifacts/macos
       - uses: actions/download-artifact@v4
+        if: env.RELEASE_PLATFORMS == 'all'
         with:
           name: ttt-windows
           path: release-artifacts/windows
       - name: Verify complete artifact set from this revision and run
         run: node scripts/verify-release-artifacts.mjs release-artifacts "${GITHUB_REF_NAME#v}"
-      - name: Draft, upload, verify, then publish beta
+      - name: Draft, upload, verify, then publish stable release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/publish-release.mjs release-artifacts

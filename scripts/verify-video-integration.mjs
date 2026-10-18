@@ -1,10 +1,10 @@
-import {launchBrowser} from './browser.mjs';
+import {launchBrowser,browserTestEntries} from './browser.mjs';
 import {expect} from '@playwright/test';
 import {createServer} from 'vite';
 import assert from 'node:assert/strict';
 let server,browser;
 try{
- server=await createServer({optimizeDeps:{entries:['index.html','tests/*.html']},server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
+ server=await createServer({optimizeDeps:{entries:browserTestEntries},server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false,watch:null}});await server.listen();
  browser=await launchBrowser();
  const page=await browser.newPage({viewport:{width:1500,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
@@ -231,7 +231,7 @@ try{
  await page.getByRole('button',{name:'Play',exact:true}).click();await page.evaluate(()=>window.advance(22));await expect(page.locator('.lap-row.selected')).toContainText('06');
  await page.getByRole('button',{name:'Pause',exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.mergedEntry.workspace.sourceVideos.second.preferences.pausedVideoTime)).toBe(22);
  assert.equal(await page.evaluate(()=>JSON.stringify([window.entry.workspace.video,window.secondEntry.workspace.video])),await page.evaluate(()=>window.originalVideos),'Merged video edits leave both original mappings untouched');
- await page.getByRole('button',{name:'Unmerge',exact:true}).click();await expect(page.getByRole('heading',{name:'Synthetic circuit',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
+ await page.locator('.library-entry.active').getByRole('button',{name:'Session actions',exact:true}).click();await page.getByRole('menuitem',{name:'Unmerge',exact:true}).click();await expect(page.getByRole('heading',{name:'Synthetic circuit',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
  assert.match(await page.evaluate(()=>document.querySelector('video').src),/video.mp4/);assert.equal(await page.evaluate(()=>window.entry.workspace.video.preferences.pausedVideoTime),0);
  assert.deepEqual(errors,[]);console.log('PASS: actual App video hook race/cut reconciliation, retained player, explicit graph/GPS seeks, no hover/zoom/pan/theme/axis/comparison feedback, uncovered hold, pending-seek responsiveness, runtime duration gate, unsupported distance, Advanced event telemetry inspection, ambiguity, semantic saves and stale session callbacks (simulated source readiness/clock; native checks separate)');
 }finally{await browser?.close();server?.httpServer?.closeIdleConnections();server?.httpServer?.closeAllConnections();await server?.close();}

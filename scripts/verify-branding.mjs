@@ -13,17 +13,23 @@ try{
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
  await expect(page).toHaveTitle('Ten Tenths Telemetry');
  await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+ await expect(page.locator('.shell')).toHaveAttribute('data-sidebar-state','collapsed');
+ await expect(page.locator('.explorer-rail .ttt-mark')).toBeVisible();
+ await page.getByRole('button',{name:'Expand sidebar',exact:true}).click();
  await expect(page.locator('.sidebar .ttt-brand')).toBeVisible();
+ assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('apex-telemetry:session-explorer'))),{sidebarState:'analysis',sort:'driver-desc',grouping:'circuit'});
  await page.getByRole('button',{name:'Switch to dark theme'}).click();
- for(const [width,height] of [[1440,920],[1024,768],[960,640]]){
+ for(const [width,height] of [[1440,920],[1024,768],[900,600],[600,500]]){
   await page.setViewportSize({width,height});
   await expect(page.locator('.titlebar .ttt-brand')).toBeVisible();
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No page horizontal overflow');
   assert(await page.locator('.titlebar .ttt-brand').evaluate(el=>el.scrollWidth<=el.clientWidth),'Header name fits');
+  if(width<900){await page.getByRole('button',{name:'Open session explorer',exact:true}).click();}
   await expect(page.locator('.sidebar .ttt-brand')).toBeVisible();
   assert(await page.locator('.sidebar .ttt-brand').evaluate(el=>el.scrollWidth<=el.clientWidth),'Sidebar name fits');
   await page.screenshot({path:`.tools/branding/app-${width}.png`});
+  if(width<900){await page.locator('#session-explorer').getByRole('button',{name:'Close session explorer',exact:true}).click();}
  }
  const response=await page.request.get(new URL('/brand/ttt-compact.svg',page.url()).href);assert(response.ok());assert.match(await response.text(),/<svg/);
- assert.deepEqual(errors,[]);console.log('Branding and legacy theme verified at 1440, 1024 and 960px.');
+ assert.deepEqual(errors,[]);console.log('Branding, theme and legacy preferences verified at 1440, 1024, 900 and 600px.');
 }finally{await browser?.close();await server?.close();}

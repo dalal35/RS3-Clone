@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
 const workflow=readFileSync(new URL('../.github/workflows/release.yml',import.meta.url),'utf8');
-test('publication requires both native builds and only a tag push',()=>{
+test('publication requires selected native builds and only a tag push',()=>{
  assert.match(workflow,/needs: \[macos, windows\]/);
  assert.match(workflow,/github\.event_name == 'push'/);
  assert.match(workflow,/startsWith\(github\.ref, 'refs\/tags\/'\)/);
+ assert.match(workflow,/always\(\) && github\.event_name/);
+ assert.match(workflow,/needs\.macos\.result == 'success'/);
+ assert.match(workflow,/== 'macos' && needs\.windows\.result == 'skipped'/);
+ assert.match(workflow,/== 'all' && needs\.windows\.result == 'success'/);
  assert.doesNotMatch(workflow,/releaseDraft: false/);
 });
 test('build jobs cannot publish and dispatch is available for validation',()=>{
@@ -18,9 +22,12 @@ test('build jobs cannot publish and dispatch is available for validation',()=>{
 test('every command in multi-command steps must fail the step on error',()=>{
  assert(/defaults:\s*\n  run:\s*\n    shell: bash/.test(workflow),'Use fail-fast bash on both hosts; default PowerShell may mask an earlier native-command failure');
 });
-test('authorized feature-branch pushes build without satisfying publication guard',()=>{
- assert.match(workflow,/branches:\s*\n      - 'fix\/dedicated-advanced-workspace'/);
+test('main pushes validate without publishing and Windows is opt-in',()=>{
+ assert.match(workflow,/branches:\s*\n      - main/);
+ assert.match(workflow,/RELEASE_PLATFORMS: \$\{\{ inputs\.platforms \|\| vars\.RELEASE_PLATFORMS \|\| 'macos' \}\}/);
+ assert.match(workflow,/windows:\s*\n    if: \(inputs\.platforms \|\| vars\.RELEASE_PLATFORMS \|\| 'macos'\) == 'all'/);
+ assert.match(workflow,/if: env\.RELEASE_PLATFORMS == 'all'\n        with:\n          name: ttt-windows/);
  const publish=workflow.slice(workflow.indexOf('  publish:'));
- assert.match(publish,/if: github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/'\)/);
- for(const ref of ['refs/heads/fix/dedicated-advanced-workspace','refs/heads/main'])assert.equal(ref.startsWith('refs/tags/'),false);
+ assert.match(publish,/github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/'\)/);
+ for(const ref of ['refs/heads/main','refs/heads/feature'])assert.equal(ref.startsWith('refs/tags/'),false);
 });

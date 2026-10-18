@@ -144,8 +144,11 @@ try {
   await expect.poll(async()=>(await savedWorkspace())?.zoom?.max??0).toBeGreaterThan(0);
   const baseline=await savedWorkspace();assert(baseline.zoom.max-baseline.zoom.min<10,'Real chart gesture narrows zoom');
   const layoutCheck=async(label)=>{
-    const failures=await page.evaluate(()=>{
+    // CSS transitions and ResizeObserver delivery follow rendered frames, not
+    // wall-clock sleeps. Keep every geometry assertion until the layout settles.
+    await expect.poll(()=>page.evaluate(()=>{
       const failures=[];const main=document.querySelector('main');
+      if(document.querySelector('.explorer-slot').getAnimations().some(animation=>animation.playState==='running'))failures.push('Sidebar width transition still running');
       if(document.documentElement.scrollWidth>innerWidth+1)failures.push(`document ${document.documentElement.scrollWidth}>${innerWidth}`);
       if(main.scrollWidth>main.clientWidth+1)failures.push(`main ${main.scrollWidth}>${main.clientWidth}`);
       const heading=main.querySelector('.workspace-heading h1');
@@ -154,7 +157,7 @@ try {
       document.querySelectorAll('.analysis-surface canvas').forEach(canvas=>{if(canvas.getBoundingClientRect().width>canvas.parentElement.getBoundingClientRect().width+1)failures.push('advanced canvas overflow');});
       document.querySelectorAll('main button,main select,main input').forEach(control=>{const r=control.getBoundingClientRect();if(r.width&&r.height&&r.top>=0&&r.bottom<=innerHeight&&(r.left<0||r.right>innerWidth+1))failures.push(`clipped control ${control.textContent||control.getAttribute('aria-label')}`);});
       return failures;
-    });assert.deepEqual(failures,[],label);
+    }),{message:label,timeout:6000,intervals:[16,50,100]}).toEqual([]);
   };
   const modeCycle=async()=>{
     const narrow=await page.getByRole('button',{name:'Open session explorer',exact:true}).isVisible();
@@ -168,9 +171,9 @@ try {
     }
     if(await shell.getAttribute('data-sidebar-state')==='collapsed')await page.getByRole('button',{name:'Expand sidebar',exact:true}).click();
     if(await shell.getAttribute('data-sidebar-state')==='expanded')await page.getByRole('button',{name:'Hide sessions',exact:true}).click();
-    await expect(shell).toHaveAttribute('data-sidebar-state','analysis');await expect(page.locator('.lap-list')).toBeVisible();await page.waitForTimeout(180);await layoutCheck('Analysis sidebar');
+    await expect(shell).toHaveAttribute('data-sidebar-state','analysis');await expect(page.locator('.lap-list')).toBeVisible();await layoutCheck('Analysis sidebar');
     await page.getByRole('button',{name:'Collapse sidebar',exact:true}).click();await expect(shell).toHaveAttribute('data-sidebar-state','collapsed');
-    await page.waitForTimeout(180);await layoutCheck('Fully collapsed sidebar');
+    await layoutCheck('Fully collapsed sidebar');
     await page.getByRole('button',{name:'Expand sidebar',exact:true}).click();
     if(await shell.getAttribute('data-sidebar-state')==='analysis')await page.getByRole('button',{name:'Show sessions',exact:true}).click();
     await expect(shell).toHaveAttribute('data-sidebar-state','expanded');

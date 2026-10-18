@@ -4,7 +4,7 @@ A local-first telemetry workspace targeting Apple Silicon macOS and Windows 10/1
 
 **Windows status:** native x64 decoding/persistence tests, NSIS extraction and hosted installation/update/uninstall pass in CI. Physical Windows GUI acceptance remains pending. See the [validation record](docs/windows-validation.md) for exact CI results and remaining physical Windows acceptance.
 
-The macOS 0.1.1 release includes the complete implemented workspace, including the session explorer and responsive navigation. See [release notes](docs/release-notes-0.1.1.md) and [macOS validation](docs/macos-release-validation.md).
+The macOS 0.1.2 release includes the complete implemented workspace, including the session explorer and responsive navigation. See [release notes](docs/release-notes-0.1.2.md) and [macOS validation](docs/macos-release-validation.md).
 
 ## Install on macOS
 
@@ -22,7 +22,7 @@ The existing bundle ID, `com.dalal35.apextelemetry`, is retained so upgrades kee
 
 The Windows build targets **Windows 10/11, x64**, using WebView2 and Media Foundation. Windows ARM64 and 32-bit builds are not provided. On Windows N, install Microsoft's [Media Feature Pack](https://support.microsoft.com/en-us/windows/experience/platform-variants/media-feature-pack-for-windows-10-11-n-february-2023) before launching: missing Media Foundation DLLs can prevent process startup. Available codecs still determine which MP4/MOV files can play or decode; an extension does not guarantee support.
 
-1. Windows is preserved for the next development phase; the 0.1.1 release publishes macOS assets only. Obtain a `ttt-windows` artifact from a successful Windows Actions run when testing Windows.
+1. Windows is preserved for the next development phase; the 0.1.2 release publishes macOS assets only. Obtain a `ttt-windows` artifact from a successful Windows Actions run when testing Windows.
 2. Run the setup program for your current user. The NSIS installer is configured for per-user installation, Start Menu integration and the standard desktop-shortcut option. Hosted CI verifies installation, same-version update and uninstallation; physical GUI and legacy-upgrade checks remain pending.
 3. If WebView2 is absent, setup downloads its bootstrapper and installs the runtime silently. That first installation requires internet; local telemetry and supported local video can operate offline afterward. End users do not need Node, Rust, Python, Visual Studio or FFmpeg.
 4. Launch Ten Tenths Telemetry and select your existing XRK files and local video. Keep original files available; importing does not move or duplicate them.
@@ -61,7 +61,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 npm run build:mac
 ```
 
-`npm run build:mac` embeds the production frontend and builds only Apple Silicon, using the existing icons. Artifacts are `src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Ten Tenths Telemetry.app` and `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Ten Tenths Telemetry_0.1.1_aarch64.dmg` (the filename version follows the app version). Apple's Command Line Tools are build-time dependencies only; the app uses system WebKit and AVFoundation at runtime.
+`npm run build:mac` embeds the production frontend and builds only Apple Silicon, using the existing icons. Artifacts are `src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Ten Tenths Telemetry.app` and `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Ten Tenths Telemetry_0.1.2_aarch64.dmg` (the filename version follows the app version). Apple's Command Line Tools are build-time dependencies only; the app uses system WebKit and AVFoundation at runtime.
 Telemetry belongs in ignored `data/`; it is never committed. Importing reads files locally without changing them. The session library stores references and workspace preferences on this computer, with atomic saves and a recoverable backup; parsed samples are cached in memory rather than duplicated on disk.
 
 ### Windows development and production builds
@@ -78,7 +78,7 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test persistenc
 npm run build:windows
 ```
 
-`build:windows` selects `x86_64-pc-windows-msvc` and NSIS explicitly; `tauri.windows.conf.json` supplies the Windows-only bundle settings and ICO. Installer output is `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Ten Tenths Telemetry_0.1.1_x64-setup.exe`. The app executable is `src-tauri/target/x86_64-pc-windows-msvc/release/apex-telemetry.exe`. Build these on Windows; the macOS bundler is not used to produce a Windows installer.
+`build:windows` selects `x86_64-pc-windows-msvc` and NSIS explicitly; `tauri.windows.conf.json` supplies the Windows-only bundle settings and ICO. Installer output is `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Ten Tenths Telemetry_0.1.2_x64-setup.exe`. The app executable is `src-tauri/target/x86_64-pc-windows-msvc/release/apex-telemetry.exe`. Build these on Windows; the macOS bundler is not used to produce a Windows installer.
 
 Browser verifiers use existing local Chrome on macOS or Playwright Chromium elsewhere. Run `npx playwright install chromium` before those checks. Real-XRK Rust integration suites and `test:plots`/`test:advanced` require the private ignored recordings in `data/`; do not upload those recordings to public CI. The Windows decoder tests copy pinned original H.264/AAC fixtures with checked SHA-256 hashes and inspected timestamps/B-pictures; no test encoder or FFmpeg is required on the runner. They must execute on Windows rather than being counted as passing when compiled out.
 
@@ -114,7 +114,7 @@ Manual video synchronization and persisted segment mappings remain shared. YouTu
 
 ## Branding and compatibility
 
-The product is now **Ten Tenths Telemetry**. The original theme, bundle identifier, executable basename and persistence keys are retained. This release advances the package version to 0.1.1 without overwriting the existing v0.1.0 tag. Windows installer upgrade detection deliberately retains its legacy registry keys while presenting the new product name. Native Windows upgrade acceptance remains required; see [Windows rebrand compatibility](docs/branding/windows-compatibility.md).
+The product is now **Ten Tenths Telemetry**. The original theme, bundle identifier, executable basename and persistence keys are retained. This release advances the package version to 0.1.2 without overwriting the existing v0.1.0 tag. Windows installer upgrade detection deliberately retains its legacy registry keys while presenting the new product name. Native Windows upgrade acceptance remains required; see [Windows rebrand compatibility](docs/branding/windows-compatibility.md).
 
 Editable SVG assets, previews, exploration and icon inventory are in [the branding guide](docs/branding/README.md). Reproduce the icons with `node scripts/generate-brand-assets.mjs`; run branding checks with `npm run test:release` and `npm run test:branding`.
 

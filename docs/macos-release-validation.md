@@ -1,14 +1,14 @@
-# macOS 0.1.1 release validation — October 18, 2026
+# macOS 0.1.2 release validation — October 18, 2026
 
 ## Consolidation and provenance
 
 Inspected local/remote branches, tags, stashes, worktrees, reflogs and unreachable objects before integration. `main` was an ancestor of the sole feature branch `fix/dedicated-advanced-workspace`; all 49 reachable historical commits and all reflog commit IDs were represented by that branch. There were no stashes, other worktrees or unreachable feature commits. The existing uncommitted session explorer/responsive work is included, along with every implemented feature on the feature branch. No history is rewritten.
 
-The release uses 0.1.1, the next unused version after v0.1.0. Package/lockfile, Cargo/lockfile and Tauri versions agree. The original bundle ID, executable name, persistence keys and Windows code are retained.
+The release uses 0.1.2. The v0.1.1 tag is preserved as an unpublished validation attempt: main CI passed, but the tag run sampled sidebar layout before ResizeObserver caught up after a CSS transition. The bounded geometry check retains its original tolerances; no production resize behavior is weakened. Package/lockfile, Cargo/lockfile and Tauri versions agree. The original bundle ID, executable name, persistence keys and Windows code are retained.
 
 ## Validation
 
-- Frontend: 257 tests across 15 files passed; TypeScript and production Vite build passed.
+- Frontend: 219 application tests across 14 tracked files passed; the local runner also discovered 38 tests in an ignored preserved baseline (257 total); TypeScript and production Vite build passed.
 - Release policy: 27 tests passed, including macOS-only exact asset sets, publication failure handling and stable release publication.
 - Full Rust suite: 123 tests passed, plus doc tests, including real private XRK import/analysis, advanced formulas/presets, GPS/lap/corner comparisons, persistence, safe refresh/relocation, merge/reopen/unmerge and 7 native AVFoundation media tests. Sandbox media fixture generation failed initially; unchanged tests passed with OS media access.
 - Browser suites: branding/theme, sidebar/responsive navigation, workflow/persistence/merge, canvas, source video, actual-App video integration, real-XRK plots and real-output-backed Advanced workflows. Browser IPC/media clocks are simulated; native playback was verified separately below.

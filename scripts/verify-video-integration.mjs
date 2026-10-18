@@ -33,10 +33,10 @@ try{
   w.__TAURI_INTERNALS__={convertFileSrc:path=>`https://asset.localhost/${encodeURIComponent(path)}`,invoke:async(cmd,args)=>{
    if(cmd==='library_snapshot')return {entries:[...(w.mergedEntry?[w.mergedEntry]:[]),w.entry,w.secondEntry],activeSessionId:w.mergedEntry?'merged-video':'integration',warnings:[]};
    if(cmd==='load_library_session')return args.sessionId==='merged-video'?w.mergedSession:args.sessionId==='second'?w.secondSession:w.session;
-   if(cmd==='save_workspace'){w.saves.push(args.workspace);(args.sessionId==='merged-video'?w.mergedEntry:args.sessionId==='second'?w.secondEntry:w.entry).workspace=args.workspace;return;}
+   if(cmd==='save_workspace'){if(w.holdResetSave&&args.workspace.primary==='lap1'){w.holdResetSave=false;await new Promise(resolve=>w.releaseResetSave=resolve);}w.saves.push(args.workspace);(args.sessionId==='merged-video'?w.mergedEntry:args.sessionId==='second'?w.secondEntry:w.entry).workspace=args.workspace;return;}
    if(cmd==='unmerge_session'){delete w.mergedEntry;delete w.mergedSession;return {entries:[w.entry,w.secondEntry],activeSessionId:'integration',warnings:[]};}
    if(cmd==='authorize_local_video')return {path:args.path,size:100,modifiedMs:1,status:'ready'};
-   if(cmd==='analyze_session'){if(w.delayAnalysis)return new Promise(resolve=>w.pending.push({args,resolve:()=>resolve(w.analysis(args))}));return w.analysis(args);}
+   if(cmd==='analyze_session'){w.analysisStarted=args;if(w.delayAnalysis)return new Promise(resolve=>w.pending.push({args,resolve:()=>resolve(w.analysis(args))}));return w.analysis(args);}
    if(cmd==='plugin:event|listen')return 1;
    if(cmd==='analyze_advanced'){w.advancedRequests.push(args.request);
     if(w.comparisonOnly&&args.request.tool==='scatter')return {tool:'scatter',xUnit:'rpm',yUnit:'rpm',laps:[{lapId:args.comparisonId,points:[{x:4000,y:1,sourceTime:130,position:50,color:null},{x:7000,y:3,sourceTime:135,position:100,color:null}],stats:{count:2,duration:5,min:4000,max:7000,mean:5500,median:5500,p05:4000,p95:7000},histogram:[],events:[],excludedCount:0}],notes:['Primary channel unavailable']};
@@ -101,8 +101,15 @@ try{
  await page.evaluate(()=>window.advance(25));
  await expect(page.getByRole('status',{name:'Video sync status'})).toHaveText('ready');
  await expect(page.locator('.video-telemetry-time')).toHaveText('Telemetry 125.00s');
- await page.evaluate(()=>{window.session.laps[1].start=120;window.session.laps[1].duration=20;window.advance(0);});
+ await page.evaluate(()=>{window.session.laps[1].start=120;window.session.laps[1].duration=20;window.analysisStarted=null;window.holdResetSave=true;window.advance(0);});
  await expect(page.locator('.video-telemetry-time')).toHaveText('Telemetry 100.00s');
+ // Finish the preceding lap reset before delaying a new pair of requests.
+ // A held native save makes the queued analysis boundary deterministic.
+ await expect.poll(()=>page.evaluate(()=>typeof window.releaseResetSave)).toBe('function');
+ await expect(page.getByText('Aligning telemetry…',{exact:true})).toBeVisible();
+ await page.evaluate(()=>window.releaseResetSave());
+ await expect.poll(()=>page.evaluate(()=>window.analysisStarted?.primaryId)).toBe('lap1');
+ await expect(page.getByText('Aligning telemetry…',{exact:true})).toBeHidden();
  await page.evaluate(()=>window.retainedVideo=document.querySelector('video'));
  await page.evaluate(()=>{window.delayAnalysis=true;window.advance(22);});
  await expect(page.locator('.lap-row.selected')).toContainText('02');
@@ -110,6 +117,7 @@ try{
  assert(await page.evaluate(()=>window.retainedVideo===document.querySelector('video')),'analysis loading retains media element');
  await page.evaluate(()=>window.advance(45));await expect(page.locator('.lap-row.selected')).toContainText('04');
  await expect.poll(()=>page.evaluate(()=>window.pending.length)).toBe(2);
+ assert.deepEqual(await page.evaluate(()=>window.pending.map(request=>request.args.primaryId)),['lap2','lap4'],'Only the intended new lap analyses are deferred');
  await page.evaluate(()=>{window.pending[1].resolve();});
  await expect(page.locator('.primary-marker circle')).toHaveCount(1);await expect(page.locator('.map-caption')).toContainText('50.0 m');
  await page.evaluate(()=>{window.pending[0].resolve();});await expect(page.locator('.map-caption')).toContainText('50.0 m');

@@ -40,8 +40,11 @@ FFmpeg and test encoders are not application or CI runtime dependencies.
 Corrections retained the original contracts: Windows fixtures exceed H.264's
 48×48 minimum; local files use a byte stream instead of URL resolution of
 `\\?\` paths; deterministic fixtures replace Sink Writer's shifted timestamps;
-canvas verification waits for observed zoom/DPR paints; Windows bundling disables
-optional bundle-type patching so exact payload hash checks remain enforceable.
+canvas verification waits for observed zoom/DPR paints; the video race verifier
+finishes the preceding queued lap-reset analysis before deliberately delaying
+the next two requests (a held mock save reproduces the old three-request failure);
+Windows bundling disables optional bundle-type patching so exact payload hash
+checks remain enforceable.
 No required test was skipped or its timestamp/color/rotation assertion weakened.
 
 Independent final acceptance reviewed the source, native logs and downloaded

@@ -58,6 +58,6 @@ pub fn fixture_mode(mode: &str) -> PathBuf {
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     windows_generate::generate(&path, mode)
-        .expect("Windows MF fixture generation must succeed; no skipped native tests");
+        .expect("Pinned Windows fixture copy must succeed; no skipped native tests");
     path
 }

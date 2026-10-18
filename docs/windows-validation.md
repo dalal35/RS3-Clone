@@ -1,22 +1,77 @@
 # Cross-platform implementation and validation
 
-## Current release validation — 2026-10-16
+## Current release validation — 2026-10-18
 
-The Windows implementation is committed and pushed through `a2b90ef`. CI run
-[38913753187](https://github.com/dalal35/RS3-Clone/actions/runs/38913753187) passed
-full MSVC checking/linking and 90 Windows unit tests, then failed generated media
-setup with `0xC00D36B4`. macOS passed 101 native tests and failed a browser
-boundary-edit race. The next 0.1.1 candidate corrects fixture input/encoder setup
-and waits for queued writes before analysis; local frontend 181, release/branding
-22, CPU-throttled workflow (twice), branding and video checks pass. Native CI
-and installer generation must still validate those corrections. No installer or
-public-release success is claimed at this checkpoint.
+**Ten Tenths Telemetry 0.1.1 passes the required Windows and macOS branch CI.**
+[Actions run 39147926598](https://github.com/dalal35/RS3-Clone/actions/runs/39147926598)
+validates source revision `75b3078b1909a127263bcfd8eaf458180dbf394c`.
+The existing `v0.1.0` tag is preserved. A new `v0.1.1` tag must rebuild both
+platforms successfully before the gated publisher can publish the beta.
+See [release preflight and safe failure handling](release-preflight.md).
 
-The candidate includes the implemented Ten Tenths Telemetry rebrand and retains
-existing library/bundle identity. Unrelated explorer/merge/layout work remains
-uncommitted. Publication is now explicitly authorized, including making the
-repository and its Git history public; the existing v0.1.0 tag must be retained.
-See [release preflight and failure handling](release-preflight.md).
+| Required check | Actual result on both native CI hosts |
+|---|---|
+| Shared frontend and release policy | PASS: 181 frontend tests and 23 release/branding tests per platform |
+| Windows MSVC compilation/linking | PASS, native x64 application and test binaries |
+| Windows native runtime tests | PASS: 110 total — 91 library, 4 persistence, 4 path, 11 Media Foundation integration |
+| macOS regression tests | PASS: 102 total — 86 library, 4 persistence, 5 path, 7 AVFoundation integration |
+| Browser regressions | PASS on both: branding, queued persistence/workflow, canvas DPR/zoom, video workspace and App integration; simulated IPC, not installed GUI acceptance |
+| Windows packaging | PASS: x64 GUI executable metadata, branded NSIS creation, archive extraction, byte-identical embedded executable and dependency notices |
+| Hosted Windows installer lifecycle | PASS: disposable per-user install, same-version update, uninstall; executable hash/version, registry/shortcuts/notices and roaming/local app-data sentinel retention |
+| macOS packaging | PASS: branded arm64 app/DMG, signature verification, resources/notices and app archive |
+| Complete artifact set | PASS: three assets with matching version, revision and workflow run; sizes and SHA-256 verified after download |
+
+Branch-run artifacts (the final tag run rebuilds these; use its published
+`SHA256SUMS` for release downloads):
+
+| Asset | Bytes | SHA-256 |
+|---|---:|---|
+| `Ten Tenths Telemetry_0.1.1_x64-setup.exe` | 2663820 | `4a64e20fe3b268f52562dc42f84bb5077c7ac7cc09ee7291bdc2dd6fde7cebac` |
+| `Ten Tenths Telemetry_0.1.1_aarch64.dmg` | 3754870 | `a5002d2d9a76b0d2d55c5bd2094c93ca5f42594e1ef20997b6b2a23417eb43bd` |
+| `Ten Tenths Telemetry_0.1.1_aarch64.app.tar.gz` | 3724194 | `a6131a96a0b2d9d2e16738a98513c6cda1cc20905006fdfa33e029413a409a60` |
+
+The native media tests now prove VFR presentation timestamps and a nonzero video
+start, actual H.264 B-picture ordering, exact CFR sampling, color/orientation,
+resizing, cancellation and released file handles. The canonical Unicode/spaced
+Windows path regression also passes. Fixtures are original color fields/silence,
+with pinned hashes, inspected bitstreams and a reproducible offline recipe;
+FFmpeg and test encoders are not application or CI runtime dependencies.
+
+Corrections retained the original contracts: Windows fixtures exceed H.264's
+48×48 minimum; local files use a byte stream instead of URL resolution of
+`\\?\` paths; deterministic fixtures replace Sink Writer's shifted timestamps;
+canvas verification waits for observed zoom/DPR paints; Windows bundling disables
+optional bundle-type patching so exact payload hash checks remain enforceable.
+No required test was skipped or its timestamp/color/rotation assertion weakened.
+
+Independent final acceptance reviewed the source, native logs and downloaded
+artifacts and returned **SHIP the documented beta through the tag gates**, with
+no critical source or artifact blocker. The rebrand retains bundle,
+executable, library and installer upgrade identity. Unrelated explorer/merge/layout
+work remains uncommitted. Private XRKs, videos and user data are excluded and
+untouched; the seven checked-in MP4s contain only reviewed synthetic test content.
+Repository/history publication is explicitly authorized and the bounded history
+scan found no credential-pattern hits or unapproved sensitive-media paths.
+
+### Physical Windows and signing limitations
+
+Hosted native decoding and disposable installer tests **do not establish**:
+
+- Standard-user Windows 10/11 GUI launch, real dialogs/drop, WebView2 local video
+  playback/seek/offset/rate, or missing-WebView2 first-install behavior.
+- Legacy-version upgrades, real-profile uninstall retention, UNC/network shares,
+  genuinely long paths, mixed-monitor DPI/window placement or native drag events.
+- Private-XRK numerical parity on Windows, large-recording memory/performance,
+  or long-clip cancellation latency.
+
+The hosted update check is same-version, and it never launches the GUI. The
+existing native YouTube playback error 153 remains documented in README/PROGRESS;
+use local footage. Windows N requires Media Feature Pack before launch. Windows
+installers are unsigned; macOS uses an ad-hoc signature and is not notarized.
+These are documented beta limitations, not claims of physical-device acceptance.
+
+The records below are historical checkpoints and do not supersede the successful
+native CI and installer results above.
 
 ## Historical local implementation evidence
 

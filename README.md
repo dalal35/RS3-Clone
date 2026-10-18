@@ -2,7 +2,7 @@
 
 A local-first telemetry workspace targeting Apple Silicon macOS and Windows 10/11 x64. Import AiM XRK sessions, select laps, compare speed and RPM, and follow the racing line alongside synchronized plots. Validated GPS geometry aligns laps by physical track position; approximate corner sections expose speed, time and channel differences with explicit resolution estimates. Click a track section to focus the whole comparison. When GPS cannot support spatial alignment, delta is clearly labeled estimated or withheld.
 
-**Windows status:** native MSVC checking/linking has passed in CI, but media-fixture runtime validation and installer generation are still being completed. See the [validation record](docs/windows-validation.md) for exact CI results and remaining physical Windows acceptance.
+**Windows status:** native x64 decoding/persistence tests, NSIS extraction and hosted installation/update/uninstall pass in CI. Physical Windows GUI acceptance remains pending. See the [validation record](docs/windows-validation.md) for exact CI results and remaining physical Windows acceptance.
 
 ## Install on macOS
 
@@ -20,16 +20,14 @@ The existing bundle ID, `com.dalal35.apextelemetry`, is retained so upgrades kee
 
 The Windows build targets **Windows 10/11, x64**, using WebView2 and Media Foundation. Windows ARM64 and 32-bit builds are not provided. On Windows N, install Microsoft's [Media Feature Pack](https://support.microsoft.com/en-us/windows/experience/platform-variants/media-feature-pack-for-windows-10-11-n-february-2023) before launching: missing Media Foundation DLLs can prevent process startup. Available codecs still determine which MP4/MOV files can play or decode; an extension does not guarantee support.
 
-Once a Windows build has passed native validation and its artifact is available:
-
-1. Download `Ten Tenths Telemetry_0.1.1_x64-setup.exe` from [GitHub Releases](https://github.com/dalal35/RS3-Clone/releases), or obtain the `ttt-windows` artifact from an authorized build-only Actions run. No Windows installer is claimed to exist by this source change; the filename follows the app version.
-2. Run the setup program for your current user. The NSIS installer is configured for per-user installation, Start Menu integration and the standard desktop-shortcut option. Installed behavior still needs the acceptance checks below.
+1. Download `Ten Tenths Telemetry_0.1.1_x64-setup.exe` from [GitHub Releases](https://github.com/dalal35/RS3-Clone/releases), or obtain the verified `ttt-windows` artifact from a successful Actions run.
+2. Run the setup program for your current user. The NSIS installer is configured for per-user installation, Start Menu integration and the standard desktop-shortcut option. Hosted CI verifies installation, same-version update and uninstallation; physical GUI and legacy-upgrade checks remain pending.
 3. If WebView2 is absent, setup downloads its bootstrapper and installs the runtime silently. That first installation requires internet; local telemetry and supported local video can operate offline afterward. End users do not need Node, Rust, Python, Visual Studio or FFmpeg.
 4. Launch Ten Tenths Telemetry and select your existing XRK files and local video. Keep original files available; importing does not move or duplicate them.
 
 Windows releases are **unsigned**. SmartScreen may show “Windows protected your PC” or an unknown-publisher prompt. If you trust the source and verified the download, use **More info → Run anyway** when Windows offers it. Organization policy may prevent that override. This project does not claim Windows code signing.
 
-The application resolves its library through Tauri's app-data API, normally `%APPDATA%\com.dalal35.apextelemetry\`, including `library.json` and its recoverable backup. Writable data is separate from the install directory. Standard upgrades are intended to preserve it; installation, upgrade and uninstall retention still need native acceptance. Workspace formats and identifiers are unchanged. Moving a workspace between operating systems can require **Locate** because stored source paths are absolute. Simultaneous editing by multiple app processes is not guaranteed.
+The application resolves its library through Tauri's app-data API, normally `%APPDATA%\com.dalal35.apextelemetry\`, including `library.json` and its recoverable backup. Writable data is separate from the install directory. Hosted CI verifies same-version update and uninstall preserve disposable app data. Legacy upgrades and real Windows profiles still need physical acceptance. Workspace formats and identifiers are unchanged. Moving a workspace between operating systems can require **Locate** because stored source paths are absolute. Simultaneous editing by multiple app processes is not guaranteed.
 
 ## Develop
 
@@ -78,9 +76,9 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test persistenc
 npm run build:windows
 ```
 
-`build:windows` selects `x86_64-pc-windows-msvc` and NSIS explicitly; `tauri.windows.conf.json` supplies the Windows-only bundle settings and ICO. Expected installer output is `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Ten Tenths Telemetry_0.1.1_x64-setup.exe`. The app executable is `src-tauri/target/x86_64-pc-windows-msvc/release/apex-telemetry.exe`. Build these on Windows; the macOS bundler is not used to produce a Windows installer.
+`build:windows` selects `x86_64-pc-windows-msvc` and NSIS explicitly; `tauri.windows.conf.json` supplies the Windows-only bundle settings and ICO. Installer output is `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Ten Tenths Telemetry_0.1.1_x64-setup.exe`. The app executable is `src-tauri/target/x86_64-pc-windows-msvc/release/apex-telemetry.exe`. Build these on Windows; the macOS bundler is not used to produce a Windows installer.
 
-Browser verifiers use existing local Chrome on macOS or Playwright Chromium elsewhere. Run `npx playwright install chromium` before those checks. Real-XRK Rust integration suites and `test:plots`/`test:advanced` require the private ignored recordings in `data/`; do not upload those recordings to public CI. The Windows decoder tests generate original H.264/AAC fixtures using system encoders, and must execute on Windows rather than being counted as passing when compiled out.
+Browser verifiers use existing local Chrome on macOS or Playwright Chromium elsewhere. Run `npx playwright install chromium` before those checks. Real-XRK Rust integration suites and `test:plots`/`test:advanced` require the private ignored recordings in `data/`; do not upload those recordings to public CI. The Windows decoder tests copy pinned original H.264/AAC fixtures with checked SHA-256 hashes and inspected timestamps/B-pictures; no test encoder or FFmpeg is required on the runner. They must execute on Windows rather than being counted as passing when compiled out.
 
 Reopening restores the active session, lap selections, channels, speed units, graph layout and compatible zoom. Missing files remain visible: use Locate to reconnect the same recording. Modified files require an explicit Refresh, which clears incompatible workspace state and corner edits. Removing a library entry never deletes its XRK file.
 

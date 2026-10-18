@@ -17,6 +17,11 @@ export function releasePlatforms(mode='all'){
  assert(['macos','all'].includes(mode),'Unknown release platform selection');
  return mode==='macos'?['macos']:['macos','windows'];
 }
+export function releaseAssetNames(platform,version){
+ assert(['macos','windows'].includes(platform),'Unknown release platform');
+ const suffixes=platform==='macos'?['_aarch64.dmg','_aarch64.app.tar.gz']:['_x64-setup.exe'];
+ return suffixes.map(suffix=>`Ten-Tenths-Telemetry_${version}${suffix}`);
+}
 export function verifyArtifacts(root,version,expected={}){
  const platforms=expected.platforms??releasePlatforms();
  assert(Array.isArray(platforms)&&platforms.length>0&&new Set(platforms).size===platforms.length&&platforms.every(p=>['macos','windows'].includes(p)),'Invalid release platforms');
@@ -33,9 +38,8 @@ export function verifyArtifacts(root,version,expected={}){
   if(expected.revision)assert.equal(manifest.revision,expected.revision,'Wrong build revision');
   if(expected.runId)assert.equal(manifest.runId,expected.runId,'Wrong workflow run');
   identities.push(`${manifest.revision}/${manifest.runId}`);
-  const suffixes=platform==='macos'?['_aarch64.dmg','_aarch64.app.tar.gz']:['_x64-setup.exe'];
-  assert.equal(manifest.assets?.length,suffixes.length,'Incomplete platform artifact set');
-  const required=suffixes.map(s=>`Ten Tenths Telemetry_${version}${s}`);
+  const required=releaseAssetNames(platform,version);
+  assert.equal(manifest.assets?.length,required.length,'Incomplete platform artifact set');
   assert.deepEqual(manifest.assets.map(a=>a.name).sort(),required.sort(),'Wrong artifact names/architecture');
   assert.deepEqual(readdirSync(dir).sort(),['manifest.json',...required].sort(),'Unexpected staged files');
   for(const asset of manifest.assets){

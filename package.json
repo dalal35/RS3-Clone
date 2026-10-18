@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "tauri": "tauri",
-    "build:windows": "tauri build --target x86_64-pc-windows-msvc --bundles nsis -- --locked",
+    "build:windows": "tauri build --target x86_64-pc-windows-msvc --bundles nsis --no-binary-patching -- --locked",
     "build:mac": "tauri build --target aarch64-apple-darwin --bundles app,dmg -- --locked",
     "test:release": "node --test scripts/release-tests.mjs scripts/release-policy-tests.mjs scripts/branding-tests.mjs scripts/windows-branding-tests.mjs",
     "test:branding": "node scripts/verify-branding.mjs",

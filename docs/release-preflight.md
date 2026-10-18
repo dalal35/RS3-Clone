@@ -31,6 +31,12 @@ successful macOS and Windows jobs from that tag's workflow run.
 - [ ] After publication, download assets without authentication and compare their
   SHA-256 hashes to the validated manifests. Confirm the public release URL.
 
+The Windows build uses Tauri's `--no-binary-patching`: this application ships
+only NSIS on Windows and has no updater plugin requiring a per-format bundle
+marker. This keeps the raw, embedded and installed executables byte-identical,
+which the artifact inspector and installer smoke test enforce. The pinned CLI
+supports this flag; keep macOS bundling unchanged.
+
 ## Safe failure handling
 
 | Failure | Required response |

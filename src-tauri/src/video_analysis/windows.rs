@@ -117,6 +117,7 @@ pub(super) struct Decoder {
     // Rust drops fields in declaration order. Native interfaces precede runtime teardown.
     pending: Option<(IMFSample, i64)>,
     reader: IMFSourceReader,
+    _stream: IMFByteStream,
     meta: VideoAnalysisMetadata,
     layout: Layout,
     eof: bool,
@@ -130,7 +131,7 @@ impl Decoder {
             // Setup interfaces must release while this scope still owns the runtime.
             // In particular, first-sample failure must not shut down MF/COM before
             // releasing the temporary attributes and media types.
-            let (reader, layout, duration_seconds, rate) = {
+            let (reader, stream, layout, duration_seconds, rate) = {
                 let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
                 if wide.contains(&0) {
                     return Err(VideoAnalysisError::new(
@@ -154,9 +155,21 @@ impl Decoder {
                     "Disable hardware transforms",
                     attributes.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 0),
                 )?;
-                let reader = native(
+                // canonicalize yields extended-length Windows paths (\\?\...).
+                // Open the filename directly: the URL resolver interprets that
+                // prefix as a network URL instead of a local filesystem path.
+                let stream = native(
                     "Open local video",
-                    MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), &attributes),
+                    MFCreateFile(
+                        MF_ACCESSMODE_READ,
+                        MF_OPENMODE_FAIL_IF_NOT_EXIST,
+                        MF_FILEFLAGS_NONE,
+                        PCWSTR(wide.as_ptr()),
+                    ),
+                )?;
+                let reader = native(
+                    "Create local video reader",
+                    MFCreateSourceReaderFromByteStream(&stream, &attributes),
                 )?;
                 native(
                     "Deselect unrelated streams",
@@ -203,12 +216,13 @@ impl Decoder {
                         None
                     }
                 });
-                (reader, layout, duration_seconds, rate)
+                (reader, stream, layout, duration_seconds, rate)
             };
             let (width, height) = layout.display();
             let mut decoder = Self {
                 pending: None,
                 reader,
+                _stream: stream,
                 meta: VideoAnalysisMetadata {
                     duration_seconds,
                     nominal_frame_rate: rate,

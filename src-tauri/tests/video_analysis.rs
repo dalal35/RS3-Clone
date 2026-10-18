@@ -377,6 +377,40 @@ fn native_windows_decoder_contract_runs() {
 }
 #[cfg(windows)]
 #[test]
+fn canonical_unicode_local_path_decodes_and_releases_file() {
+    let source = fixture();
+    let directory = source.with_extension("local folder 雪");
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("recording café 雪.mp4");
+    std::fs::rename(source, &path).unwrap();
+    let canonical = std::fs::canonicalize(&path).unwrap();
+    assert!(canonical.to_str().unwrap().starts_with(r"\\?\"));
+    let metadata = inspect(&canonical, &CancellationToken::default()).unwrap();
+    assert_eq!((metadata.width, metadata.height), SOURCE_SIZE);
+    let frame = extract_frame(
+        &canonical,
+        2.11,
+        ResizeOptions {
+            max_width: 32,
+            max_height: 32,
+        },
+        PixelFormat::Rgb8,
+        &CancellationToken::default(),
+    )
+    .unwrap();
+    assert!((frame.timestamp_seconds - 2.4).abs() < 0.001);
+    assert_eq!(
+        (frame.width, frame.height, frame.pixels.len()),
+        (32, 16, 1536)
+    );
+    assert!(frame.pixels[0] < 50 && frame.pixels[1] < 50 && frame.pixels[2] > 210);
+    let renamed = path.with_extension("renamed.mp4");
+    std::fs::rename(path, &renamed).unwrap();
+    std::fs::remove_file(renamed).unwrap();
+    std::fs::remove_dir(directory).unwrap();
+}
+#[cfg(windows)]
+#[test]
 fn h264_b_frames_keep_actual_ordered_presentation_timestamps() {
     let path = fixture_mode("bframes");
     let mut times = vec![];

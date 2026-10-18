@@ -91,7 +91,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
           cache-on-failure: true
-          key: windows-x64-msvc
+          key: windows-x64-msvc-v2
       - name: Verify version and install dependencies
         run: |
           node scripts/verify-release-version.mjs

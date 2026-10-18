@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#141618" />
+  <meta name="description" content="Ten Tenths Telemetry is a local-first motorsport telemetry analysis workspace. Compare laps, inspect GPS racing lines, sync video and find the details behind every tenth." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Ten Tenths Telemetry | Every tenth tells a story" />
+  <meta property="og:description" content="A modern, local-first motorsport telemetry workspace. Read the data. Find the time." />
+  <meta property="og:url" content="https://dalal35.github.io/Ten-Tenths-Telemetry/" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700;750&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <title>Ten Tenths Telemetry | Every tenth tells a story</title>
+  <script src="./main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="site-glow" aria-hidden="true"></div>
+
+  <header class="site-header" id="top">
+    <div class="container nav-wrap">
+      <a class="brand" href="#top" aria-label="Ten Tenths Telemetry home">
+        <img src="./assets/ttt-primary.svg" width="48" height="36" alt="" />
+        <span class="brand-copy"><strong>TEN TENTHS</strong><span>TELEMETRY</span></span>
+      </a>
+      <nav class="nav-links" id="primary-navigation" aria-label="Main navigation">
+        <a href="#product">Product</a>
+        <a href="#features">Features</a>
+        <a href="#workflow">How it works</a>
+        <a href="#download">Download</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="nav-github" href="https://github.com/dalal35/Ten-Tenths-Telemetry" target="_blank" rel="noopener noreferrer" aria-label="View project on GitHub">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .8a11.2 11.2 0 0 0-3.54 21.82c.56.1.77-.24.77-.54v-2.11c-3.12.68-3.78-1.32-3.78-1.32-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.73 1.16 1.73 1.16 1.01 1.73 2.66 1.23 3.31.94.1-.73.39-1.23.71-1.51-2.49-.29-5.11-1.25-5.11-5.54 0-1.23.44-2.23 1.16-3.02-.12-.29-.5-1.43.11-2.99 0 0 .95-.31 3.1 1.16a10.85 10.85 0 0 1 5.65 0c2.15-1.47 3.1-1.16 3.1-1.16.61 1.56.23 2.7.11 2.99.73.79 1.16 1.79 1.16 3.02 0 4.3-2.63 5.25-5.14 5.53.4.35.76 1.04.76 2.1v3.11c0 .3.2.65.77.54A11.2 11.2 0 0 0 12 .8Z"/></svg>
+          <span>GitHub</span>
+        </a>
+        <a class="header-download" href="#download">Get the app <span aria-hidden="true">↗</span></a>
+      </div>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="primary-navigation" aria-label="Open navigation menu"><span></span><span></span><span></span></button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero section-shell" aria-labelledby="hero-title">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="container hero-content">
+        <div class="eyebrow hero-eyebrow"><span class="pulse"></span> THE TELEMETRY WORKSPACE BUILT FOR DRIVERS <span class="eyebrow-line"></span> 01 / 04</div>
+        <h1 id="hero-title">Every tenth<br /><span class="hero-title-line">tells a <em>story.</em></span></h1>
+        <p class="hero-subtitle">Stop guessing where the time went. Turn your laps, racing lines and onboard video into a clearer picture of your performance.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" id="hero-download" href="https://github.com/dalal35/Ten-Tenths-Telemetry/releases/download/v0.1.3/Ten-Tenths-Telemetry_0.1.3_aarch64.dmg"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v10m0 0 4-4m-4 4-4-4M3.5 15.5v2h13v-2"/></svg> Download for macOS <span class="button-arrow" aria-hidden="true">↗</span></a>
+          <a class="button button-secondary" href="#product">Explore the platform <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="hero-meta"><span class="hero-meta-item"><span class="tiny-check" aria-hidden="true">✓</span> Local-first by design</span><span class="meta-divider"></span><span>macOS 13+ · Apple Silicon</span><span class="meta-divider"></span><span id="hero-version">v0.1.3 available</span></div>
+      </div>
+      <div class="container product-container" id="product">
+        <div class="floating-label floating-label-left"><span class="label-indicator"></span> PRECISION IN EVERY PIXEL</div>
+        <div class="floating-label floating-label-right">BUILT TO GO FASTER / 001</div>
+        <div class="product-shell">
+          <div class="product-topbar">
+            <div class="product-window-controls"><i></i><i></i><i></i></div>
+            <div class="product-window-title">TEN TENTHS <span> / TELEMETRY WORKSPACE</span></div>
+            <div class="product-live"><span class="signal-dot"></span> ANALYSIS READY</div>
+          </div>
+          <div class="product-body">
+            <aside class="app-sidebar">
+              <div class="app-sidebar-header"><span>YOUR WORKSPACE</span><span>⌄</span></div>
+              <div class="session-name"><span class="session-icon">▤</span><div><strong>Practice Session</strong><small>Example recording</small></div></div>
+              <div class="app-sidebar-caption">RECORDED LAPS <span>↕</span></div>
+              <button type="button" class="app-lap selected" data-lap="14"><span class="lap-dot teal"></span><span>Lap 14</span><span class="lap-time">25.918</span></button>
+              <button type="button" class="app-lap" data-lap="15"><span class="lap-dot yellow"></span><span>Lap 15</span><span class="lap-time">25.621</span></button>
+              <button type="button" class="app-lap" data-lap="16"><span class="lap-dot muted"></span><span>Lap 16</span><span class="lap-time">26.043</span></button>
+              <div class="app-sidebar-divider"></div>
+              <span class="app-sidebar-subtitle">ANALYSIS CHANNELS</span>
+              <span class="channel-row"><span class="channel-icon">〜</span> Speed comparison</span>
+              <span class="channel-row"><span class="channel-icon">⌁</span> RPM analysis</span>
+              <span class="channel-row"><span class="channel-icon">◎</span> GPS / delta</span>
+              <div class="app-sidebar-foot"><span class="sidebar-foot-dot"></span> LOCAL SESSION</div>
+            </aside>
+            <div class="app-main">
+              <div class="app-tabs" role="tablist" aria-label="Preview workspace view">
+                <button class="app-tab active" role="tab" type="button" id="tab-telemetry" aria-selected="true" aria-controls="panel-telemetry" data-view="telemetry">Telemetry</button>
+                <button class="app-tab" role="tab" type="button" id="tab-advanced" aria-selected="false" aria-controls="panel-advanced" data-view="advanced" tabindex="-1">Advanced</button>
+                <button class="app-tab" role="tab" type="button" id="tab-video" aria-selected="false" aria-controls="panel-video" data-view="video" tabindex="-1">Video</button>
+                <span class="app-tabs-spacer"></span><span class="app-sync">●&nbsp; SYNCED</span>
+              </div>
+              <div class="preview-panel" id="panel-telemetry" role="tabpanel" aria-labelledby="tab-telemetry">
+                <div class="preview-stat-row">
+                  <div class="mini-stat"><span>REFERENCE LAP</span><strong>25.621 <small>s</small></strong></div>
+                  <div class="mini-stat"><span>COMPARISON LAP</span><strong id="compare-lap-time">25.918 <small>s</small></strong></div>
+                  <div class="mini-stat positive"><span>TIME DIFFERENCE</span><strong id="compare-delta">+0.297 <small>s</small></strong></div>
+                </div>
+                <div class="data-grid">
+                  <div class="chart-area">
+                    <div class="area-heading"><div><strong>Speed trace</strong><span class="chart-unit">MPH / DISTANCE</span></div><div class="chart-legend"><span><i class="legend-cyan"></i> Reference</span><span><i class="legend-gold"></i> Comparison</span></div></div>
+                    <svg class="speed-chart" viewBox="0 0 650 242" role="img" aria-label="Illustrative overlapping speed trace line chart for two laps" preserveAspectRatio="none">
+                      <defs><linearGradient id="speedShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#33cbd1" stop-opacity=".18"/><stop offset="1" stop-color="#33cbd1" stop-opacity="0"/></linearGradient></defs>
+                      <g class="grid-lines"><path d="M40 32H630 M40 76H630 M40 120H630 M40 164H630 M40 208H630"/><path d="M40 14V208 M138 14V208 M236 14V208 M334 14V208 M432 14V208 M530 14V208 M630 14V208"/></g>
+                      <g class="chart-numbers"><text x="7" y="37">75</text><text x="7" y="81">60</text><text x="7" y="125">45</text><text x="7" y="169">30</text><text x="7" y="213">15</text><text x="40" y="234">0</text><text x="184" y="234">25%</text><text x="332" y="234">50%</text><text x="479" y="234">75%</text><text x="605" y="234">100%</text></g>
+                      <path class="chart-fill" d="M40 122 C65 99 81 51 111 44 C137 37 151 82 172 131 S211 163 236 111 S279 61 302 73 S335 164 361 155 S393 67 424 48 S464 46 479 88 S500 171 529 147 S571 45 604 53 L630 64 L630 208 L40 208Z" fill="url(#speedShade)" />
+                      <path class="chart-line-gold" d="M40 137 C68 107 83 59 110 60 C140 58 149 99 172 146 S214 167 236 122 S277 79 300 90 S334 177 361 164 S393 88 425 67 S458 70 479 106 S507 180 530 164 S578 63 606 70 L630 79" fill="none" stroke="#efb35b" stroke-width="3" stroke-linecap="round"/>
+                      <path class="chart-line-cyan" d="M40 122 C65 99 81 51 111 44 C137 37 151 82 172 131 S211 163 236 111 S279 61 302 73 S335 164 361 155 S393 67 424 48 S464 46 479 88 S500 171 529 147 S571 45 604 53 L630 64" fill="none" stroke="#33cbd1" stroke-width="3" stroke-linecap="round"/>
+                      <path class="chart-playhead" d="M405 15V208"/><circle cx="405" cy="61" r="5" fill="#33cbd1" stroke="#1c292b" stroke-width="4"/>
+                    </svg>
+                    <div class="delta-band"><span>TIME DELTA</span><svg viewBox="0 0 530 45" preserveAspectRatio="none" aria-hidden="true"><path d="M0 28H530" stroke="#303537" stroke-dasharray="4 5"/><path d="M0 28 C52 27 76 11 120 14 S194 27 241 23 S302 37 348 23 S427 17 530 7" fill="none" stroke="#efb35b" stroke-width="2.5"/></svg><strong>+0.297s</strong></div>
+                  </div>
+                  <div class="track-area"><div class="area-heading"><strong>Racing line</strong><span class="chart-unit">GPS OVERLAY</span></div><div class="track-visual"><svg viewBox="0 0 275 270" role="img" aria-label="Illustrative circuit outline with two racing lines"><g class="track-grid"><path d="M0 50H275M0 100H275M0 150H275M0 200H275M55 0V270M110 0V270M165 0V270M220 0V270"/></g><path d="M72 180 C46 171 31 134 55 108 S100 78 102 54 S150 29 169 49 S170 94 202 98 S237 117 212 137 S200 186 166 204 S104 200 88 221 S47 215 72 180Z" stroke="#343a3d" stroke-width="27" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M72 180 C46 171 31 134 55 108 S100 78 102 54 S150 29 169 49 S170 94 202 98 S237 117 212 137 S200 186 166 204 S104 200 88 221 S47 215 72 180Z" stroke="#536067" stroke-width="1" stroke-dasharray="3 5" fill="none"/><path d="M70 182 C45 170 34 132 57 108 S104 77 105 55 S152 35 170 49 S170 91 201 100 S230 120 210 136 S199 184 166 202 S102 200 88 219 S46 215 70 182Z" stroke="#33cbd1" stroke-width="2.5" fill="none"/><path d="M77 174 C52 174 28 140 57 113 S99 82 100 57 S144 29 165 50 S175 99 204 95 S239 115 215 141 S203 190 162 209 S110 202 92 224 S47 212 77 174Z" stroke="#efb35b" stroke-width="1.6" opacity=".85" fill="none"/><circle cx="70" cy="182" r="5" fill="#33cbd1" stroke="#141618" stroke-width="3"/></svg><div class="track-corner-label">T4 <span>↗</span></div></div><div class="track-foot"><span>01 <i class="legend-cyan"></i> REFERENCE</span><span>02 <i class="legend-gold"></i> COMPARISON</span></div></div>
+                </div>
+              </div>
+              <div class="preview-panel hidden" id="panel-advanced" role="tabpanel" aria-labelledby="tab-advanced" hidden>
+                <div class="advanced-top"><div><small>ADVANCED ANALYSIS</small><h3>Understand the limit.</h3><p>Visualize lateral and longitudinal G, shifts and where the speed comes from.</p></div><span class="detail-pill">G-G SCATTER / RPM</span></div>
+                <div class="advanced-content"><div class="gg-visual"><div class="gg-label">TRACTION CIRCLE</div><svg id="gg-preview" viewBox="0 0 300 228" role="img" aria-label="Illustrative scatter plot showing lateral versus longitudinal acceleration"><circle cx="150" cy="112" r="84" fill="none" stroke="#2b3537"/><circle cx="150" cy="112" r="46" fill="none" stroke="#2b3537"/><path d="M20 112H280 M150 14V211" stroke="#2b3537"/><ellipse cx="150" cy="112" rx="80" ry="85" fill="#33cbd1" opacity=".04"/><g id="gg-dots" fill="#33cbd1"></g><text x="140" y="225" fill="#788487" font-size="9">LATERAL G</text></svg></div><div class="shift-visual"><div class="gg-label">SHIFT ANALYSIS</div><div class="shift-bars"><span style="--h:52%"></span><span style="--h:74%"></span><span style="--h:63%"></span><span style="--h:89%"></span><span style="--h:96%"></span><span style="--h:77%"></span><span style="--h:92%"></span><span style="--h:64%"></span><span style="--h:81%"></span><span style="--h:100%"></span><span style="--h:73%"></span><span style="--h:91%"></span></div><div class="shift-caption"><span>ENGINE SPEED</span><span>RPM</span></div><div class="shift-foot">Inspect gear changes and RPM recovery</div></div></div>
+              </div>
+              <div class="preview-panel hidden" id="panel-video" role="tabpanel" aria-labelledby="tab-video" hidden>
+                <div class="video-preview"><div class="video-topline"><span>ONBOARD VIDEO</span><span>LOCAL MP4 / MOV</span></div><div class="video-frame"><svg viewBox="0 0 600 250" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Illustrative onboard view of a racetrack"><defs><linearGradient id="horizon" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#182a2f"/><stop offset="1" stop-color="#4d6264"/></linearGradient></defs><rect width="600" height="250" fill="url(#horizon)"/><path d="M0 146L120 138L250 150L378 143L600 134V250H0Z" fill="#283d38"/><path d="M0 250L226 154H382L600 250Z" fill="#555e62"/><path d="M0 250L244 154M600 250L367 154" stroke="#97a6a5" stroke-width="5"/><path d="M0 250L242 169 M600 250L362 169" stroke="#b4ada0" stroke-width="2"/><path d="M0 205L242 157M600 198L364 157" stroke="#efb35b" stroke-width="7" stroke-dasharray="18 16"/><path d="M245 251C275 205 319 188 355 251" fill="#15191b"/><rect width="600" height="250" fill="#101315" opacity=".10"/></svg><div class="video-frame-badge">ILLUSTRATIVE VIEW</div><div class="video-play-icon" aria-hidden="true">▶</div></div><div class="video-timeline"><span>00:34.200</span><div class="timeline-track"><i></i></div><span>02:16.400</span></div><div class="video-status"><span class="video-status-dot"></span> MANUAL SYNC ACTIVE <span>·</span> TELEMETRY + VIDEO SEEK TOGETHER</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="product-bottom-strip"><span><span class="strip-dot"></span> AIM XRK COMPATIBLE</span><span>APP VIEW <strong>01 / 03</strong></span><span>ILLUSTRATIVE DATA &amp; UI VISUALIZATION</span></div>
+        </div>
+        <div class="product-shadow" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <section class="signal-strip" aria-label="Platform highlights"><div class="container signal-inner"><div><span class="signal-number">01</span><strong>DEEPER INSIGHT</strong><small>Beyond the lap time</small></div><div><span class="signal-number">02</span><strong>ONE WORKSPACE</strong><small>Data, GPS, video</small></div><div><span class="signal-number">03</span><strong>YOUR DATA STAYS YOURS</strong><small>Local-first analysis</small></div></div></section>
+
+    <section class="features-section section-pad" id="features" aria-labelledby="features-title"><div class="container">
+      <div class="section-heading"><div><div class="section-index"><span class="index-line"></span> 01 / BUILT FOR THE DETAILS</div><h2 id="features-title">The tools to find<br /><em>what the stopwatch can't.</em></h2></div><p>Real answers live in the corners, the braking zones and the smallest differences between laps. Make them easier to see.</p></div>
+      <div class="feature-grid">
+        <article class="feature-card feature-large"><div class="feature-card-top"><span class="feature-num">01 / LAP ANALYSIS</span><span class="feature-icon">↗</span></div><div class="feature-art feature-art-chart" aria-hidden="true"><span class="visual-axis visual-axis-top">72 MPH</span><span class="visual-axis visual-axis-bottom">18 MPH</span><svg viewBox="0 0 600 220" preserveAspectRatio="none"><path d="M0 40H600 M0 95H600 M0 150H600 M0 205H600" stroke="#293236" stroke-width="1"/><path d="M0 155C54 92 74 65 101 83S144 188 180 165S232 64 270 72S338 171 378 151S416 54 460 78S523 160 558 98S592 65 600 62" stroke="#efb35b" stroke-width="2.4" fill="none" opacity=".8"/><path d="M0 141C56 81 72 53 101 68S145 172 180 146S231 50 270 55S339 156 378 137S416 42 460 62S524 146 558 86S591 55 600 47" stroke="#33cbd1" stroke-width="3" fill="none"/></svg><div class="chart-point-label">− 0.297 <small>s</small></div></div><div class="feature-card-bottom"><div><h3>See where the time goes.</h3><p>Overlay speed and RPM, compare laps by track position, and find the sections that actually matter.</p></div><span class="feature-tag">LAP DELTA</span></div></article>
+        <article class="feature-card feature-tall"><div class="feature-card-top"><span class="feature-num">02 / GPS &amp; CORNERS</span><span class="feature-icon">⌁</span></div><div class="feature-art feature-art-track" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><svg viewBox="0 0 320 260"><path d="M65 190C23 135 60 101 96 103S112 25 172 50S183 129 233 126S301 149 255 191S137 214 113 227S86 217 65 190Z" stroke="#334044" stroke-width="28" fill="none" stroke-linejoin="round"/><path d="M65 190C23 135 60 101 96 103S112 25 172 50S183 129 233 126S301 149 255 191S137 214 113 227S86 217 65 190Z" stroke="#33cbd1" stroke-width="3" fill="none"/><path d="M71 196C35 134 67 105 97 110S111 35 169 52S186 134 236 120S307 153 258 196S136 210 113 231S94 216 71 196Z" stroke="#efb35b" stroke-width="2" fill="none"/><circle cx="233" cy="126" r="7" fill="#33cbd1" stroke="#141618" stroke-width="4"/></svg><span class="track-chip">APEX // T04</span></div><div class="feature-card-bottom"><div><h3>Lines tell the truth.</h3><p>Follow the racing line, zoom into corners and compare how you carry speed.</p></div><span class="feature-tag">GPS OVERLAY</span></div></article>
+        <article class="feature-card"><div class="feature-card-top"><span class="feature-num">03 / ADVANCED</span><span class="feature-icon">↗</span></div><div class="feature-art feature-art-traction" aria-hidden="true"><svg viewBox="0 0 290 155"><circle cx="145" cy="78" r="64" fill="none" stroke="#344044"/><circle cx="145" cy="78" r="35" fill="none" stroke="#344044"/><path d="M20 78H270M145 5V150" stroke="#344044"/><g id="feature-gg-dots" fill="#33cbd1"></g></svg></div><div class="feature-card-bottom"><div><h3>At the edge of grip.</h3><p>G-G plots, shift detection and RPM recovery to understand the whole lap.</p></div></div></article>
+        <article class="feature-card"><div class="feature-card-top"><span class="feature-num">04 / VIDEO SYNC</span><span class="feature-icon">↗</span></div><div class="feature-art feature-art-video" aria-hidden="true"><div class="video-wave one"></div><div class="video-wave two"></div><div class="video-wave three"></div><div class="video-scrub"><span></span></div><div class="video-art-label"><span>● REC</span> 00:42:18</div></div><div class="feature-card-bottom"><div><h3>See the moment.</h3><p>Sync local onboard footage to your telemetry and inspect them together.</p></div></div></article>
+        <article class="feature-card"><div class="feature-card-top"><span class="feature-num">05 / CUSTOM CHANNELS</span><span class="feature-icon">↗</span></div><div class="feature-art feature-art-formula" aria-hidden="true"><div><span>USER DEFINED CHANNEL</span><strong>Δ speed <i>=</i> v<sub>ref</sub> − v<sub>lap</sub></strong><small>FORMULA / VALIDATED UNITS</small></div><span class="formula-bracket">{ }</span></div><div class="feature-card-bottom"><div><h3>Analyze your way.</h3><p>Define math channels, save analysis presets and shape the workspace to your needs.</p></div></div></article>
+      </div>
+    </div></section>
+
+    <section class="workflow-section section-pad" id="workflow" aria-labelledby="workflow-title"><div class="container"><div class="section-heading workflow-heading"><div><div class="section-index"><span class="index-line"></span> 02 / SIMPLE BY DESIGN</div><h2 id="workflow-title">From raw data<br />to <em>better decisions.</em></h2></div><p>Less time organizing files. More time understanding the next lap.</p></div><div class="workflow-grid"><div class="workflow-step"><span class="workflow-number">01<span class="workflow-line"></span></span><div class="workflow-symbol"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M11 5H26L33 12V34H11Z M26 5V13H33M6 11V34M17 21H28M17 26H28"/></svg></div><h3>Import your session.</h3><p>Open an AiM XRK recording. Your original files stay where they are.</p></div><div class="workflow-step"><span class="workflow-number">02<span class="workflow-line"></span></span><div class="workflow-symbol"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M5 30V6M5 30H35M8 24L15 15L21 20L29 8L35 12M8 31L15 24L21 28L29 20L35 23"/></svg></div><h3>Find the difference.</h3><p>Select laps and connect the dots between speed, line, delta and video.</p></div><div class="workflow-step"><span class="workflow-number">03</span><div class="workflow-symbol"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M9 31L19 21L26 27L36 8M28 8H36V16M5 34H35"/></svg></div><h3>Make the next lap count.</h3><p>Take a specific insight back to the track, not just a number.</p></div></div></div></section>
+
+    <section class="manifesto-section"><div class="container manifesto-inner"><div class="manifesto-top"><span>THE PHILOSOPHY</span><span>10 / 10</span></div><p>“A faster lap isn't one big thing.<br />It's a hundred <em>small things,</em><br />finally made visible.”</p><div class="manifesto-bottom"><span class="manifesto-mark">TTT <span>↗</span></span><span>PRECISION. CLARITY. PROGRESS.</span></div></div></section>
+
+    <section class="download-section section-pad" id="download" aria-labelledby="download-title"><div class="container"><div class="section-heading download-heading"><div><div class="section-index"><span class="index-line"></span> 03 / GET ON TRACK</div><h2 id="download-title">Your next tenth<br /><em>starts here.</em></h2></div><p>Download Ten Tenths Telemetry and give your laps a closer look.</p></div><div class="download-grid"><div class="download-card download-mac"><div class="download-card-meta"><span class="os-icon apple-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M17.05 12.54c.01 2.16 1.9 2.87 1.92 2.88-.02.06-.3 1.05-.99 2.08-.6.9-1.22 1.79-2.2 1.81-.96.02-1.28-.59-2.39-.59-1.12 0-1.47.58-2.38.61-.96.04-1.68-.97-2.27-1.87-1.23-1.79-2.17-5.05-.91-7.25.62-1.09 1.74-1.79 2.94-1.81.92-.02 1.8.64 2.37.64s1.64-.79 2.76-.67c.47.02 1.78.19 2.62 1.42-.07.04-1.57.91-1.56 2.75ZM15.29 7.2c.5-.62.85-1.48.76-2.34-.72.03-1.62.48-2.14 1.08-.46.53-.87 1.41-.76 2.24.81.06 1.64-.42 2.14-.98Z"/></svg></span><span class="availability available"><i></i> AVAILABLE NOW</span></div><div><h3>macOS</h3><p>Built for Apple Silicon. Just download, drag into Applications and start analyzing.</p></div><a class="button button-primary download-card-button" id="mac-download" href="https://github.com/dalal35/Ten-Tenths-Telemetry/releases/download/v0.1.3/Ten-Tenths-Telemetry_0.1.3_aarch64.dmg"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v10m0 0 4-4m-4 4-4-4M3.5 15.5v2h13v-2"/></svg> Download for Mac <span aria-hidden="true">↗</span></a><div class="download-requirements"><span>Apple Silicon (M1 or newer)</span><span>macOS 13 Ventura or later</span><span id="mac-version">Version 0.1.3 · DMG installer</span></div></div>
+      <div class="download-card download-windows"><div class="download-card-meta"><span class="os-icon windows-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M2 4.6 11 3.3v8H2zm10.2-1.45L22 1.75v9.55h-9.8zM2 12.65h9v8L2 19.4zm10.2 0H22v9.6l-9.8-1.42z"/></svg></span><span class="availability upcoming" id="windows-availability"><i></i> COMING SOON</span></div><div><h3>Windows</h3><p id="windows-description">Windows 10/11 x64 support is in development. Public installer coming after physical GUI validation.</p></div><a class="button button-unavailable download-card-button" id="windows-download" aria-disabled="true" tabindex="-1"><span id="windows-button-label">Not available yet</span><span aria-hidden="true">↗</span></a><div class="download-requirements"><span>Windows 10/11 · x64</span><span>Native installation planned</span><a href="https://github.com/dalal35/Ten-Tenths-Telemetry/releases" target="_blank" rel="noopener noreferrer">Follow releases ↗</a></div></div></div>
+      <div class="download-notes"><div><span class="note-symbol">i</span><p><strong>macOS first-launch notice.</strong> The current app isn't Apple-notarized, so Gatekeeper may ask you to approve it under <em>System Settings → Privacy &amp; Security → Open Anyway.</em> Only open software you trust.</p></div><a href="https://github.com/dalal35/Ten-Tenths-Telemetry/releases/latest" target="_blank" rel="noopener noreferrer">Release notes ↗</a></div>
+    </div></section>
+
+    <section class="end-cta"><div class="container end-cta-inner"><span class="end-label"><span class="pulse"></span> READY WHEN YOU ARE</span><h2>Less guessing.<br /><em>More driving.</em></h2><a href="#download" class="button button-primary">Get Ten Tenths Telemetry <span aria-hidden="true">↗</span></a><div class="end-racing-stripes" aria-hidden="true"><i></i><i></i><i></i></div></div></section>
+  </main>
+
+  <footer class="footer"><div class="container footer-top"><a class="brand footer-brand" href="#top" aria-label="Back to top"><img src="./assets/ttt-primary.svg" width="46" height="34" alt=""/><span class="brand-copy"><strong>TEN TENTHS</strong><span>TELEMETRY</span></span></a><p>Built to make every lap more useful.</p><div class="footer-links"><a href="#features">Features</a><a href="#download">Download</a><a href="https://github.com/dalal35/Ten-Tenths-Telemetry" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div></div><div class="container footer-bottom"><span>© <span id="year">2026</span> TEN TENTHS TELEMETRY</span><span>DESIGNED FOR THE PURSUIT OF SPEED.</span><a href="#top">BACK TO TOP ↑</a></div></footer>
+</body>
+</html>

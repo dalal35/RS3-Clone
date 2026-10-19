@@ -1,5 +1,5 @@
 // Actual release executable + native IPC + WebView2; no Vite, IPC or media mocks.
-// https://playwright.dev/docs/webview2 (CDP via inherited WebView2 arguments).
+// https://playwright.dev/docs/webview2 (CDP via temporary executable-scoped CI policy).
 import {chromium, expect} from '@playwright/test';
 import assert from 'node:assert/strict';
 import {spawn, execFileSync} from 'node:child_process';
@@ -18,6 +18,7 @@ for (const profile of profiles) assert(!existsSync(profile), `Refusing existing 
 const binary = resolve('src-tauri/target/x86_64-pc-windows-msvc/release/apex-telemetry.exe');
 assert(existsSync(binary), 'Build the Windows release executable before runtime verification.');
 const root = mkdtempSync(join(process.env.RUNNER_TEMP, 'ttt-runtime-'));
+try {
 let fixtures = root;
 for (let i = 0; i < 7; i++) fixtures = join(fixtures, 'Unicode 保存 café recording folder');
 mkdirSync(fixtures, {recursive:true});
@@ -27,14 +28,32 @@ copyFileSync('src-tauri/tests/fixtures/windows/bframes.mp4', videoPath);
 assert(videoPath.length > 260, 'Native asset test must use a genuinely long Unicode path.');
 const errors = [];
 let app, browser, page;
+let policyCreated = false;
+const policySubkey = 'Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments';
+const policyState = JSON.parse(execFileSync('pwsh', ['-NoProfile','-NonInteractive','-Command', `
+  $ErrorActionPreference = 'Stop'
+  $existingViews = @('Registry64','Registry32') | ForEach-Object {
+    $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, ([Microsoft.Win32.RegistryView]$_))
+    try {
+      $key = $base.OpenSubKey('${policySubkey}')
+      try { if ($null -ne $key -and 'apex-telemetry.exe' -in $key.GetValueNames()) { $_ } } finally { if ($null -ne $key) { $key.Dispose() } }
+    } finally { $base.Dispose() }
+  }
+  [PSCustomObject]@{
+    existingViews = @($existingViews | Where-Object { $null -ne $_ })
+    elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  } | ConvertTo-Json -Compress
+`], {encoding:'utf8'}));
+assert.equal(policyState.existingViews.length, 0, 'Refusing an existing application-specific WebView2 debugging policy in either registry view.');
+assert(policyState.elevated, 'Hosted runtime policy setup requires the disposable elevated runner.');
+// One port for both launches: a shared WebView2 UDF requires matching options.
+const socket = createServer();
+await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
+const port = socket.address().port;
+await new Promise(resolve => socket.close(resolve));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function launch() {
-  const socket = createServer();
-  await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
-  const port = socket.address().port;
-  await new Promise(resolve => socket.close(resolve));
   app = spawn(binary, [], {env:{...process.env,
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:`--remote-debugging-port=${port}`,
     WEBVIEW2_USER_DATA_FOLDER:join(root, 'webview-profile')}, stdio:['ignore','pipe','pipe']});
   let output = '';
   app.stdout.on('data', data => {output += data;});
@@ -53,7 +72,7 @@ async function launch() {
     }, {timeout:60000, message:'Release app initializes actual WebView2 CDP'}).toBe(true);
   } catch (error) {
     // Report only this synthetic app's process tree/listeners, never the runner environment.
-    console.error('WebView2 initialization diagnostics:', {pid:app.pid,port,lastProbe,output});
+    console.error('WebView2 initialization diagnostics:', {pid:app.pid,port,exitCode:app.exitCode,signalCode:app.signalCode,lastProbe,output});
     try {
       console.error(execFileSync('pwsh', ['-NoProfile','-NonInteractive','-Command', `
         $all = @(Get-CimInstance Win32_Process)
@@ -77,6 +96,21 @@ async function launch() {
     } catch (diagnostic) {console.error('Process diagnostics unavailable:',diagnostic.message);}
     throw error;
   }
+  // A random port alone is insufficient: prove the listening browser belongs to
+  // the exact release process we launched before attaching or evaluating JS.
+  const listeners = JSON.parse(execFileSync('pwsh', ['-NoProfile','-NonInteractive','-Command', `
+    $ErrorActionPreference = 'Stop'
+    $all = @(Get-CimInstance Win32_Process)
+    $ids = @([uint32]${app.pid})
+    do {
+      $children = @($all | Where-Object { $_.ParentProcessId -in $ids -and $_.ProcessId -notin $ids })
+      $ids += @($children | ForEach-Object { $_.ProcessId })
+    } while ($children.Count -gt 0)
+    $webviews = @($all | Where-Object { $_.ProcessId -in $ids -and $_.Name -eq 'msedgewebview2.exe' } | ForEach-Object { $_.ProcessId })
+    ConvertTo-Json -Compress -InputObject @(Get-NetTCPConnection -State Listen -LocalPort ${port} | Where-Object { $_.OwningProcess -in $webviews -and $_.LocalAddress -in @('127.0.0.1','::1') } | Select-Object LocalAddress,LocalPort,OwningProcess)
+  `], {encoding:'utf8',timeout:15000}));
+  assert(listeners.length > 0, 'CDP loopback listener must belong to a WebView2 descendant of the launched release app.');
+  assert(app.exitCode === null, 'Release application must remain alive while attaching.');
   browser = await chromium.connectOverCDP(endpoint);
   await expect.poll(() => browser.contexts().flatMap(context => context.pages()).length, {timeout:30000}).toBeGreaterThan(0);
   page = browser.contexts()[0].pages()[0];
@@ -98,11 +132,31 @@ async function close() {
     }
   }
   await browser?.close().catch(() => {}); browser = undefined;
+  await expect.poll(async () => {
+    try {return (await fetch(`http://127.0.0.1:${port}/json/version`, {signal:AbortSignal.timeout(1000)})).ok;}
+    catch {return false;}
+  }, {timeout:15000, message:'Previous WebView2 debugging listener closes before restart or policy cleanup'}).toBe(false);
 }
 const invoke = (command, args = {}) => page.evaluate(({command,args}) => window.__TAURI_INTERNALS__.invoke(command,args), {command,args});
 const snapshot = () => invoke('library_snapshot');
 async function saved() {await expect(page.getByText('Saved on this computer', {exact:true})).toBeVisible();}
 try {
+  // Runtime 150+ ignores additional-argument env/HKCU overrides in elevated hosts.
+  // Use Microsoft's supported machine policy, scoped to this executable only.
+  // https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security
+  execFileSync('pwsh', ['-NoProfile','-NonInteractive','-Command', `
+    $ErrorActionPreference = 'Stop'
+    $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
+    try {
+      $key = $base.CreateSubKey('${policySubkey}', $true)
+      try {
+        if ('apex-telemetry.exe' -in $key.GetValueNames()) { throw 'Runtime debugging policy appeared after preflight; refusing to overwrite it.' }
+        $key.SetValue('apex-telemetry.exe', '--remote-debugging-port=${port}', [Microsoft.Win32.RegistryValueKind]::String)
+      } finally { $key.Dispose() }
+    } finally { $base.Dispose() }
+  `]);
+  policyCreated = true;
+  console.log('Disposable hosted WebView2: elevated process, executable-scoped HKLM debugging policy, stable loopback port', port);
   await launch();
   assert.equal((await snapshot()).entries.length, 0, 'Start with a disposable empty native library.');
   const sessions = [];
@@ -200,8 +254,26 @@ try {
   throw error;
 } finally {
   try {await close();} finally {
+  try {
+  if (policyCreated) {
+    execFileSync('pwsh', ['-NoProfile','-NonInteractive','-Command', `
+      $ErrorActionPreference = 'Stop'
+      $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
+      try {
+        $key = $base.OpenSubKey('${policySubkey}', $true)
+        try {
+          if ($key.GetValue('apex-telemetry.exe') -cne '--remote-debugging-port=${port}') { throw 'Runtime debugging policy changed unexpectedly; refusing to remove it.' }
+          $key.DeleteValue('apex-telemetry.exe')
+        } finally { if ($null -ne $key) { $key.Dispose() } }
+      } finally { $base.Dispose() }
+    `]);
+  }
+  } finally {
   // Only these initially absent application profiles can have been created by this run.
   for (const profile of profiles) rmSync(profile,{recursive:true,force:true,maxRetries:30,retryDelay:200});
-  rmSync(root,{recursive:true,force:true,maxRetries:30,retryDelay:200});
   }
+  }
+}
+} finally {
+  rmSync(root,{recursive:true,force:true,maxRetries:30,retryDelay:200});
 }

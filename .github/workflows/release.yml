@@ -63,7 +63,7 @@ jobs:
       - name: Native Rust, persistence and real media tests
         run: |
           node scripts/verify-native-video-tests.mjs
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test persistence --test video --test video_analysis
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test persistence --test video --test video_analysis --test feature_parity
       - name: Browser workflows (simulated IPC, not native GUI acceptance)
         run: |
           npm run test:branding
@@ -118,7 +118,7 @@ jobs:
         run: |
           cargo check --locked --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
           node scripts/verify-native-video-tests.mjs
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test persistence --test video --test video_analysis
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test persistence --test video --test video_analysis --test feature_parity
       - name: Browser workflows (simulated IPC, not native GUI acceptance)
         run: |
           npm run test:branding
@@ -130,6 +130,8 @@ jobs:
         run: npm run build:windows
       - name: Inspect x64 GUI executable, NSIS contents and notices
         run: node scripts/stage-release-artifacts.mjs windows "${{ runner.temp }}/ttt-release"
+      - name: Hosted WebView2 runtime with disposable synthetic recordings
+        run: node scripts/verify-windows-runtime.mjs
       - name: Smoke install, update and uninstall with disposable runner data
         run: pwsh -NoProfile -NonInteractive -File scripts/verify-windows-install.ps1
       - uses: actions/upload-artifact@v4

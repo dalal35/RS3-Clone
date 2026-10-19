@@ -41,10 +41,42 @@ async function launch() {
   app.stderr.on('data', data => {output += data;});
   app.on('error', error => {output += String(error);});
   const endpoint = `http://127.0.0.1:${port}`;
-  await expect.poll(async () => {
-    assert(app.exitCode === null, `Application exited before CDP initialization: ${output}`);
-    try {return (await fetch(`${endpoint}/json/version`, {signal:AbortSignal.timeout(1000)})).ok;} catch {return false;}
-  }, {timeout:60000, message:'Release app initializes actual WebView2 CDP'}).toBe(true);
+  let lastProbe = '';
+  try {
+    await expect.poll(async () => {
+      assert(app.exitCode === null, `Application exited before CDP initialization: ${output}`);
+      try {
+        const response = await fetch(`${endpoint}/json/version`, {signal:AbortSignal.timeout(1000)});
+        lastProbe = `HTTP ${response.status}: ${(await response.text()).slice(0, 1000)}`;
+        return response.ok;
+      } catch (error) {lastProbe = `${error.message}; ${error.cause?.code ?? ''}`; return false;}
+    }, {timeout:60000, message:'Release app initializes actual WebView2 CDP'}).toBe(true);
+  } catch (error) {
+    // Report only this synthetic app's process tree/listeners, never the runner environment.
+    console.error('WebView2 initialization diagnostics:', {pid:app.pid,port,lastProbe,output});
+    try {
+      console.error(execFileSync('pwsh', ['-NoProfile','-NonInteractive','-Command', `
+        $all = @(Get-CimInstance Win32_Process)
+        $ids = @([uint32]${app.pid})
+        do {
+          $children = @($all | Where-Object { $_.ParentProcessId -in $ids -and $_.ProcessId -notin $ids })
+          $ids += @($children | ForEach-Object { $_.ProcessId })
+        } while ($children.Count -gt 0)
+        [PSCustomObject]@{
+          Processes = @($all | Where-Object { $_.ProcessId -in $ids } | Select-Object ProcessId,ParentProcessId,Name,CommandLine)
+          Window = @(Get-Process -Id ${app.pid} -ErrorAction SilentlyContinue | Select-Object Id,MainWindowHandle,MainWindowTitle,Responding)
+          Listeners = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq ${port} -or $_.OwningProcess -in $ids } | Select-Object LocalAddress,LocalPort,OwningProcess)
+        } | ConvertTo-Json -Depth 5 -Compress
+      `], {encoding:'utf8',timeout:15000}));
+      for (const host of ['localhost','[::1]']) {
+        try {
+          const response = await fetch(`http://${host}:${port}/json/version`, {signal:AbortSignal.timeout(2000)});
+          console.error(`Alternate CDP ${host}: HTTP ${response.status}`, (await response.text()).slice(0,1000));
+        } catch (probe) {console.error(`Alternate CDP ${host}:`,probe.message,probe.cause?.code);}
+      }
+    } catch (diagnostic) {console.error('Process diagnostics unavailable:',diagnostic.message);}
+    throw error;
+  }
   browser = await chromium.connectOverCDP(endpoint);
   await expect.poll(() => browser.contexts().flatMap(context => context.pages()).length, {timeout:30000}).toBeGreaterThan(0);
   page = browser.contexts()[0].pages()[0];

@@ -1,0 +1,98 @@
+name: Windows development
+
+# Dispatch explicitly after a Windows-only push with [skip ci]. This leaves the
+# production release workflow intact without starting its macOS push job.
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Targeted checks, or final complete Windows validation
+        type: choice
+        default: runtime
+        options: [runtime, native, browser, full]
+      packaging:
+        description: Validate packaging changes (full always includes NSIS)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: windows-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows x64 / ${{ inputs.suite }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          cache-on-failure: true
+          key: windows-x64-msvc-v2
+      - name: Install locked dependencies and verify version
+        run: |
+          npm ci
+          node scripts/verify-release-version.mjs
+      - name: Native Windows parity, persistence and Media Foundation
+        if: inputs.suite == 'native' || inputs.suite == 'full'
+        run: |
+          cargo check --locked --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
+          node scripts/verify-native-video-tests.mjs
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --test persistence --test video --test video_analysis --test feature_parity
+      - name: Frontend and release policy
+        if: inputs.suite == 'full'
+        run: |
+          npm test
+          npm run test:release
+      - name: Install browser for simulated UI regressions
+        if: inputs.suite == 'browser' || inputs.suite == 'full'
+        run: npx playwright install chromium
+      - name: Browser workflows (simulated IPC)
+        if: inputs.suite == 'browser' || inputs.suite == 'full'
+        run: |
+          npm run test:branding
+          npm run test:sidebar
+          npm run test:workflow
+          npm run test:canvas
+          npm run test:video
+      - name: Build optimized executable without packaging
+        if: inputs.suite == 'runtime' && !inputs.packaging
+        run: npm run tauri -- build --target x86_64-pc-windows-msvc --no-bundle -- --locked
+      - name: Build Windows NSIS for packaging changes or final validation
+        if: inputs.packaging || inputs.suite == 'full'
+        run: npm run build:windows
+      - name: Inspect PE, NSIS payload and dependency notices
+        if: inputs.packaging || inputs.suite == 'full'
+        run: node scripts/stage-release-artifacts.mjs windows "${{ runner.temp }}/ttt-release"
+      - name: Actual WebView2 runtime with disposable synthetic recordings
+        if: inputs.suite == 'runtime' || inputs.suite == 'full'
+        run: node scripts/verify-windows-runtime.mjs
+      - name: Disposable install, same-version update and uninstall
+        if: inputs.packaging || inputs.suite == 'full'
+        run: pwsh -NoProfile -NonInteractive -File scripts/verify-windows-install.ps1
+      - uses: actions/upload-artifact@v4
+        if: inputs.packaging || inputs.suite == 'full'
+        with:
+          name: ttt-windows
+          path: ${{ runner.temp }}/ttt-release/windows/
+          if-no-files-found: error
+          compression-level: 0

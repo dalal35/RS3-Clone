@@ -1,5 +1,5 @@
 // Actual release executable + native IPC + WebView2; no Vite, IPC or media mocks.
-// https://playwright.dev/docs/webview2 (CDP via temporary executable-scoped CI policy).
+// https://playwright.dev/docs/webview2 (CDP via per-process WebView2 switches).
 import {chromium, expect} from '@playwright/test';
 import assert from 'node:assert/strict';
 import {spawn, execFileSync} from 'node:child_process';
@@ -28,24 +28,8 @@ copyFileSync('src-tauri/tests/fixtures/windows/bframes.mp4', videoPath);
 assert(videoPath.length > 260, 'Native asset test must use a genuinely long Unicode path.');
 const errors = [];
 let app, browser, page;
-let policyCreated = false;
-const policySubkey = 'Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments';
-const policyState = JSON.parse(execFileSync('pwsh', ['-NoProfile','-NonInteractive','-Command', `
-  $ErrorActionPreference = 'Stop'
-  $existingViews = @('Registry64','Registry32') | ForEach-Object {
-    $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, ([Microsoft.Win32.RegistryView]$_))
-    try {
-      $key = $base.OpenSubKey('${policySubkey}')
-      try { if ($null -ne $key -and 'apex-telemetry.exe' -in $key.GetValueNames()) { $_ } } finally { if ($null -ne $key) { $key.Dispose() } }
-    } finally { $base.Dispose() }
-  }
-  [PSCustomObject]@{
-    existingViews = @($existingViews | Where-Object { $null -ne $_ })
-    elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-  } | ConvertTo-Json -Compress
-`], {encoding:'utf8'}));
-assert.equal(policyState.existingViews.length, 0, 'Refusing an existing application-specific WebView2 debugging policy in either registry view.');
-assert(policyState.elevated, 'Hosted runtime policy setup requires the disposable elevated runner.');
+// WebView2 accepts host command-line switches without changing machine policy.
+// https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2environmentoptions#get_additionalbrowserarguments
 // One port for both launches: a shared WebView2 UDF requires matching options.
 const socket = createServer();
 await new Promise(resolve => socket.listen(0, '127.0.0.1', resolve));
@@ -53,7 +37,7 @@ const port = socket.address().port;
 await new Promise(resolve => socket.close(resolve));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function launch() {
-  app = spawn(binary, [], {env:{...process.env,
+  app = spawn(binary, [`--edge-webview-switches=--remote-debugging-port=${port}`], {env:{...process.env,
     WEBVIEW2_USER_DATA_FOLDER:join(root, 'webview-profile')}, stdio:['ignore','pipe','pipe']});
   let output = '';
   app.stdout.on('data', data => {output += data;});
@@ -135,28 +119,13 @@ async function close() {
   await expect.poll(async () => {
     try {return (await fetch(`http://127.0.0.1:${port}/json/version`, {signal:AbortSignal.timeout(1000)})).ok;}
     catch {return false;}
-  }, {timeout:15000, message:'Previous WebView2 debugging listener closes before restart or policy cleanup'}).toBe(false);
+  }, {timeout:15000, message:'Previous WebView2 debugging listener closes before restart or cleanup'}).toBe(false);
 }
 const invoke = (command, args = {}) => page.evaluate(({command,args}) => window.__TAURI_INTERNALS__.invoke(command,args), {command,args});
 const snapshot = () => invoke('library_snapshot');
 async function saved() {await expect(page.getByText('Saved on this computer', {exact:true})).toBeVisible();}
 try {
-  // Runtime 150+ ignores additional-argument env/HKCU overrides in elevated hosts.
-  // Use Microsoft's supported machine policy, scoped to this executable only.
-  // https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security
-  execFileSync('pwsh', ['-NoProfile','-NonInteractive','-Command', `
-    $ErrorActionPreference = 'Stop'
-    $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
-    try {
-      $key = $base.CreateSubKey('${policySubkey}', $true)
-      try {
-        if ('apex-telemetry.exe' -in $key.GetValueNames()) { throw 'Runtime debugging policy appeared after preflight; refusing to overwrite it.' }
-        $key.SetValue('apex-telemetry.exe', '--remote-debugging-port=${port}', [Microsoft.Win32.RegistryValueKind]::String)
-      } finally { $key.Dispose() }
-    } finally { $base.Dispose() }
-  `]);
-  policyCreated = true;
-  console.log('Disposable hosted WebView2: elevated process, executable-scoped HKLM debugging policy, stable loopback port', port);
+  console.log('Disposable hosted WebView2: per-process debugging switch, stable loopback port', port);
   await launch();
   assert.equal((await snapshot()).entries.length, 0, 'Start with a disposable empty native library.');
   const sessions = [];
@@ -201,6 +170,12 @@ try {
   const player = page.locator('video');
   await expect(player).toBeVisible();
   await expect(page.getByRole('button',{name:'Play',exact:true})).toBeEnabled();
+  // An enabled control only means the source is authorized. The native media
+  // element still loads metadata/frames asynchronously on the hosted runner.
+  await expect.poll(() => player.evaluate(element =>
+    element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+    Number.isFinite(element.duration) && element.duration >= 2.9 && element.videoWidth === 128),
+  {timeout:15000, message:'Actual WebView2 decodes the authorized H.264 fixture before playback assertions'}).toBe(true);
   const source = await player.evaluate(element => ({src:element.currentSrc,duration:element.duration,width:element.videoWidth}));
   assert.match(source.src, /^http:\/\/asset\.localhost\//);
   assert(source.duration >= 2.9 && source.width === 128, 'WebView2 decoded the authorized local H.264 asset.');
@@ -250,28 +225,17 @@ try {
   assert.deepEqual(errors,[]);
   console.log('PASS: release WebView2 startup/restart, real long Unicode XRK import/merge/unmerge, explorer/MPH/graphs/GPS/delta/math/G-G, authorized long Unicode local H.264 playback/rate/seek/manual sync persistence; emulated viewport/DPR only. Native dialogs/drop, physical Windows 10/11 and mixed-monitor DPI remain untested.');
 } catch (error) {
+  console.error('Native runtime media state:', await page?.locator('video').evaluateAll(elements => elements.map(element => ({
+    src:element.currentSrc, readyState:element.readyState, networkState:element.networkState,
+    duration:element.duration, width:element.videoWidth, height:element.videoHeight,
+    error:element.error && {code:element.error.code,message:element.error.message},
+  }))).catch(() => 'Unavailable'));
   console.error('Native runtime failure UI:', await page?.locator('body').innerText().catch(() => 'Unavailable'));
   throw error;
 } finally {
   try {await close();} finally {
-  try {
-  if (policyCreated) {
-    execFileSync('pwsh', ['-NoProfile','-NonInteractive','-Command', `
-      $ErrorActionPreference = 'Stop'
-      $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
-      try {
-        $key = $base.OpenSubKey('${policySubkey}', $true)
-        try {
-          if ($key.GetValue('apex-telemetry.exe') -cne '--remote-debugging-port=${port}') { throw 'Runtime debugging policy changed unexpectedly; refusing to remove it.' }
-          $key.DeleteValue('apex-telemetry.exe')
-        } finally { if ($null -ne $key) { $key.Dispose() } }
-      } finally { $base.Dispose() }
-    `]);
-  }
-  } finally {
   // Only these initially absent application profiles can have been created by this run.
   for (const profile of profiles) rmSync(profile,{recursive:true,force:true,maxRetries:30,retryDelay:200});
-  }
   }
 }
 } finally {

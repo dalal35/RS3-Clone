@@ -1,6 +1,48 @@
 # Cross-platform implementation and validation
 
-## Current release validation — 2026-10-18
+## Current Windows compilation validation — 2026-10-18
+
+**The complete 0.1.3 application passes Windows x64 and macOS native CI.**
+[Build-only Actions run 39173706094](https://github.com/dalal35/Ten-Tenths-Telemetry/actions/runs/39173706094)
+validated `main` revision `6b6b48a596547bf546d4d361cf0dceb96ad2afb7`, including
+the consolidated sidebar, explorer, merging, video, analysis and responsive UI.
+The run used manual dispatch with `platforms=all`; the publisher was skipped.
+No tag or release was created. Default macOS release policy is unchanged.
+
+| Required check | Windows x64 | macOS arm64 regression |
+|---|---|---|
+| Frontend | PASS: 219 tests / 14 files | PASS: 219 tests / 14 files |
+| Release policy and branding | PASS: 28 tests | PASS: 28 tests |
+| Native Rust | PASS: 110 — 91 library, 4 persistence, 4 video paths, 11 Media Foundation | PASS: 102 — 86 library, 4 persistence, 5 video paths, 7 AVFoundation |
+| Browser regressions | PASS: branding, sidebar/explorer/responsive analysis, workflow/merge/persistence, canvas, video workspace and App integration | PASS: same suites |
+| Production build and artifact inspection | PASS: MSVC check/link, x64 GUI executable, NSIS payload/notices inspection | PASS: arm64 app/DMG, signature/resources/notices inspection |
+| Hosted installer lifecycle | PASS: install, same-version update, uninstall; hashes, metadata, shortcuts and disposable app-data retention | Not applicable |
+
+The first [validation run 39173449959](https://github.com/dalal35/Ten-Tenths-Telemetry/actions/runs/39173449959)
+passed macOS but exposed a Windows checkout compatibility failure: Git converted
+`release.yml` to CRLF, breaking an exact multiline release-policy assertion.
+The fix pins `.github/workflows/*.yml` to LF in `.gitattributes`, matching the
+existing NSIS checkout convention. An isolated `core.autocrlf=true` checkout
+reproduced the failure and passed the unchanged policy tests after the fix.
+All assertions and application/dependency code remain unchanged, including Media
+Foundation decoding, persistence, NSIS settings and the macOS bridge. No user
+recordings or library data were changed or uploaded.
+
+The `ttt-windows` CI artifact contains
+`Ten-Tenths-Telemetry_0.1.3_x64-setup.exe` (2,669,223 bytes), SHA-256
+`02086fc23d08daba80f943d9d3ad65750ec1f7d445542bda5875085cf06e16b4`.
+Its manifest identifies the tested revision and run above; this is a CI artifact,
+not a published Windows release.
+
+Physical Windows 10/11 GUI, native dialogs/drop, packaged WebView2 playback,
+missing-WebView2 setup, standard-user permissions, previous-version upgrades,
+UNC/long paths, mixed-monitor DPI and long-recording performance remain unverified.
+Private-XRK integration suites require ignored local recordings and were not run
+in hosted CI. Windows N requires Media Feature Pack; the installer is unsigned.
+Browser IPC/media simulation does not establish native GUI acceptance. The more
+detailed runtime limitations below still apply.
+
+## Historical 0.1.1 release validation — 2026-10-18
 
 **Ten Tenths Telemetry 0.1.1 passes the required Windows and macOS branch CI.**
 [Actions run 39147926598](https://github.com/dalal35/RS3-Clone/actions/runs/39147926598)

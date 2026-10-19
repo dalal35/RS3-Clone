@@ -34,8 +34,19 @@ try {
   });
   await page.goto(url);
   await expect(page.locator('iframe')).toHaveCount(0);
-  await page.getByRole('button',{name:'Open interactive demo'}).click();
-  const frame=page.frameLocator('#demo-frame');
+  await expect(page.locator('#live-demo, #demo-open')).toHaveCount(0);
+  for(const selector of ['#hero-download','.header-download']){
+    const link=page.locator(selector);
+    await expect(link).toHaveAttribute('href','#download');
+    await expect(link).toContainText('Download');
+    await link.click();
+    await expect(page).toHaveURL(/#download$/);
+    await expect.poll(()=>page.locator('#download').evaluate(el=>Math.abs(el.getBoundingClientRect().top))).toBeLessThan(110);
+    await page.goto(url);
+  }
+  await page.screenshot({path:'test-results/website-homepage.png',fullPage:true});
+  await page.goto(url+'demo/index.html');
+  const frame=page;
   await expect(frame.getByRole('button',{name:'Telemetry',exact:true})).toBeVisible();
   await expect(frame.locator('.plot-row').first()).toBeVisible();
   await expect(frame.locator('.track .primary-line')).toHaveAttribute('d',/.+/);
@@ -82,16 +93,8 @@ try {
   await expect.poll(async()=>Number(await frame.getByLabel('Seek sample playback',{exact:true}).inputValue())).toBeGreaterThan(beforePlayback+.2);
   await expect(frame.getByRole('button',{name:'Pause',exact:true})).toBeVisible();
   await frame.getByRole('button',{name:'Pause',exact:true}).click();
-  await page.getByRole('button',{name:'Expand',exact:false}).click();
-  await expect(page.locator('#live-demo')).toHaveClass(/demo-expanded/);
-  await frame.getByRole('button',{name:'Play',exact:true}).focus();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#live-demo')).not.toHaveClass(/demo-expanded/);
-  await page.screenshot({path:'test-results/website-desktop.png',fullPage:false});
-  await frame.locator('body').screenshot({path:'test-results/website-workspace.png'});
+  await page.screenshot({path:'test-results/website-workspace.png'});
   await page.setViewportSize({width:390,height:844});
-  await expect(page.getByRole('button',{name:'Expand',exact:false})).toBeVisible();
-  await page.locator('#live-demo').scrollIntoViewIfNeeded();
   await frame.getByRole('button',{name:'Open session explorer',exact:true}).click();
   await expect(frame.getByRole('button',{name:'Close session explorer',exact:true}).last()).toBeVisible();
   await frame.getByRole('button',{name:'Close session explorer',exact:true}).last().click();
@@ -99,7 +102,11 @@ try {
   await expect(frame.locator('.plot-row').first()).toBeVisible();
   assert.equal(await frame.locator('body').evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Demo fits mobile viewport');
   await page.screenshot({path:'test-results/website-mobile.png'});
+  await page.goto(url);
+  await expect(page.locator('#hero-download')).toHaveText(/Download/);
+  await page.locator('#hero-download').click();
+  await expect(page).toHaveURL(/#download$/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Landing page fits mobile viewport');
   assert.deepEqual(errors,[],'Browser errors');assert.deepEqual(consoleErrors,[],'Console errors');assert.deepEqual(badRequests,[],'Production asset paths');
-  console.log('Website production-path navigation, laps, synchronized plots/map, analysis, video, expansion and mobile checks passed.');
+  console.log('Website production-path navigation, laps, synchronized plots/map, analysis, video and mobile checks passed.');
 } finally {await browser?.close();await new Promise(r=>server.close(r));}

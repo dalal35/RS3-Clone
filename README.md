@@ -128,6 +128,6 @@ At narrow widths navigation becomes a keyboard-accessible modal drawer. Telemetr
 
 ## Website live demo
 
-Run `npm run build:website` to produce the GitHub Pages site in `dist-website/`; serve that directory with any static HTTP server. `npm run test:website` exercises the built site beneath a project subdirectory using Playwright. The landing page remains static and loads the React workspace only when a visitor opens the demo.
+Run `npm run build:website` to produce the GitHub Pages site in `dist-website/`; serve that directory with any static HTTP server. `npm run test:website` exercises the built site beneath a project subdirectory using Playwright. The homepage is static and its Download buttons scroll to the installer section. The standalone React demo remains available at `demo/index.html`, without an embedded homepage preview.
 
 The demo reuses the desktop `App`, session explorer, uPlot charts, track map, Advanced workspace and styles. `vite.website.config.ts` substitutes browser-only bridge and video adapters from `website/demo/`; the desktop entry and native bridge are unchanged. Two synthetic sessions share deterministic channels, lap clocks, GPS, segments and analysis data. Video is a labeled animated illustration with synchronized playback rather than recorded footage. Native file/library operations and unsupported formula evaluation are unavailable; the demo does not import XRK files or persist a user library. The Pages workflow builds this artifact whenever the website or reused frontend changes.

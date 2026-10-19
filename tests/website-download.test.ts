@@ -4,8 +4,8 @@ import {runInNewContext} from 'node:vm';
 const script=readFileSync(new URL('../website/main.js',import.meta.url),'utf8');
 async function render(platform:string,userAgent:string,options:{hint?:string;offline?:boolean}={}){
  const nodes:Record<string,{href:string;textContent:string}>={
-  '#hero-download':{href:'#download',textContent:''},'#hero-download-label':{href:'',textContent:'Choose your download'},
-  '.header-download':{href:'#download',textContent:''},'#header-download-label':{href:'',textContent:'Get the app'},
+  '#hero-download':{href:'#download',textContent:''},'#hero-download-label':{href:'',textContent:'Download'},
+  '.header-download':{href:'#download',textContent:''},'#header-download-label':{href:'',textContent:'Download'},
   '#hero-version':{href:'',textContent:''},'#mac-version':{href:'',textContent:''},
   '#mac-download':{href:'https://example.com/fallback.dmg',textContent:''},
   '#windows-download':{href:'https://example.com/windows-beta.exe',textContent:''},
@@ -18,26 +18,25 @@ async function render(platform:string,userAgent:string,options:{hint?:string;off
  });
  await new Promise(resolve=>setImmediate(resolve));return nodes;
 }
-describe('website platform download',()=>{
- it('routes Windows visitors to the Windows beta even when latest release contains a Mac installer',async()=>{
-  const nodes=await render('Win32','Windows NT 10.0');
-  expect(nodes['#hero-download-label'].textContent).toContain('Windows');
-  expect(nodes['#hero-download'].href).toBe(nodes['#windows-download'].href);
-  expect(nodes['.header-download'].href).toBe(nodes['#windows-download'].href);
-  expect(nodes['#hero-version'].textContent).toContain('Windows');
+describe('homepage download navigation',()=>{
+ it('has a plain Download link and no homepage demo',()=>{
+  const html=readFileSync(new URL('../website/index.html',import.meta.url),'utf8');
+  expect(html).toContain('id="hero-download-label">Download</span>');
+  expect(html).toContain('id="header-download-label">Download</span>');
+  expect(html).not.toMatch(/id="(?:live-demo|demo-open|demo-stage)"|Choose your download/);
  });
- it('uses the latest Mac installer for macOS visitors',async()=>{
-  const nodes=await render('MacIntel','Macintosh');expect(nodes['#hero-download-label'].textContent).toContain('macOS');
-  expect(nodes['#hero-download'].href).toBe('https://example.com/latest.dmg');
+ it.each([['Win32','Windows NT'],['MacIntel','Macintosh'],['MacIntel','iPad'],['Linux','Linux'],['iPhone','iPhone'],['','']])('keeps top links pointing to the download section on %s',async(platform,userAgent)=>{
+  for(const offline of [false,true]){
+   const nodes=await render(platform,userAgent,{offline});
+   expect(nodes['#hero-download'].href).toBe('#download');
+   expect(nodes['.header-download'].href).toBe('#download');
+   expect(nodes['#hero-download-label'].textContent).toBe('Download');
+   expect(nodes['#header-download-label'].textContent).toBe('Download');
+  }
  });
- it('keeps Windows selection when the release lookup fails',async()=>{
-  const nodes=await render('Win32','Windows NT',{offline:true});expect(nodes['#hero-download'].href).toBe(nodes['#windows-download'].href);
- });
- it('uses client-hint platform when available',async()=>{
-  const nodes=await render('','',{hint:'Windows'});expect(nodes['#hero-download'].href).toBe(nodes['#windows-download'].href);
- });
- it.each([['Linux x86_64','Linux'],['MacIntel','iPad'],['iPhone','iPhone'],['Linux armv8','Android'],['','']])('shows download choices for unsupported/mobile platform %s',async(platform,userAgent)=>{
-  const nodes=await render(platform,userAgent);expect(nodes['#hero-download'].href).toBe('#download');
-  expect(nodes['#hero-download-label'].textContent).not.toMatch(/for macOS|for Windows/);
+ it('still updates the Mac installer in the download section',async()=>{
+  const nodes=await render('Win32','Windows NT');
+  expect(nodes['#mac-download'].href).toBe('https://example.com/latest.dmg');
+  expect(nodes['#windows-download'].href).toBe('https://example.com/windows-beta.exe');
  });
 });

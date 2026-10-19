@@ -188,7 +188,8 @@ try {
   await page.getByRole('button',{name:'Play',exact:true}).click();
   await expect.poll(() => player.evaluate(element => element.currentTime)).toBeGreaterThan(.1);
   await page.getByRole('button',{name:'Pause',exact:true}).click();
-  await page.getByLabel('Playback speed',{exact:true}).selectOption('0.5');
+  // The wrapping label also contains the select's option text.
+  await page.getByLabel(/^Playback speed/).selectOption('0.5');
   await expect.poll(() => player.evaluate(element => element.playbackRate)).toBe(.5);
   // Real timeline dispatch enters the existing adapter/controller seek path.
   const timeline = page.getByRole('slider',{name:'Video timeline',exact:true});

@@ -92,7 +92,6 @@
       const release = await response.json();
       const assets = Array.isArray(release.assets) ? release.assets : [];
       const mac = assets.find(asset => /aarch64\.dmg$/i.test(asset.name || '') && asset.browser_download_url);
-      const windows = assets.find(asset => /(?:x64|x86_64).*(?:setup\.exe|\.msi$)/i.test(asset.name || '') && asset.browser_download_url);
       if (mac) {
         [document.querySelector('#hero-download'), document.querySelector('#mac-download')].forEach(link => {
           if (link) link.href = mac.browser_download_url;
@@ -101,24 +100,8 @@
         document.querySelector('#hero-version').textContent = `v${version} available`;
         document.querySelector('#mac-version').textContent = `Version ${version} · DMG installer`;
       }
-      if (windows) {
-        const download = document.querySelector('#windows-download');
-        const badge = document.querySelector('#windows-availability');
-        const description = document.querySelector('#windows-description');
-        if (download) {
-          download.href = windows.browser_download_url;
-          download.removeAttribute('aria-disabled');
-          download.removeAttribute('tabindex');
-          download.classList.remove('button-unavailable');
-          download.classList.add('button-primary');
-        }
-        if (badge) { badge.classList.remove('upcoming'); badge.classList.add('available'); badge.innerHTML = '<i></i> AVAILABLE NOW'; }
-        if (description) description.textContent = 'Download the latest published Windows 10/11 x64 installer.';
-        const text = document.querySelector('#windows-button-label');
-        if (text) text.textContent = 'Download for Windows';
-      }
     } catch (error) {
-      // Keep the known-good macOS v0.1.3 fallback and Windows coming soon state.
+      // Keep the known-good macOS fallback; the Windows beta link is static.
       // No third-party analytics or API keys are used.
       document.querySelector('#hero-download').href = FALLBACK_DMG;
       document.querySelector('#mac-download').href = FALLBACK_DMG;

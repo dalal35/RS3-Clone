@@ -88,7 +88,11 @@ try {
   assert.match(await page.locator('.import-button kbd').innerText(), /Ctrl O/);
   await expect(page.locator('.plot-label').filter({hasText:'mph'})).toBeVisible();
   assert.equal(await page.locator('.session-button').count(), 2);
+  if (!await page.getByRole('button',{name:'Compare lap 3',exact:true}).isVisible()) {
+    await page.getByRole('button',{name:'Open session explorer',exact:true}).click();
+  }
   await page.getByRole('button',{name:'Compare lap 3',exact:true}).click();
+  if (await page.getByRole('dialog',{name:'Session explorer',exact:true}).isVisible()) await page.keyboard.press('Escape');
   await expect(page.locator('.uplot').last()).toBeVisible(); await saved();
   const analysis = await invoke('analyze_session',{sessionId:a.id,primaryId:'lap-1',comparisonId:'lap-2',axis:'distance',channelIds:['gps-speed','channel-0'],formulas:[]});
   assert.equal(analysis.alignment.method, 'spatial');
@@ -114,6 +118,12 @@ try {
   const source = await player.evaluate(element => ({src:element.currentSrc,duration:element.duration,width:element.videoWidth}));
   assert.match(source.src, /^http:\/\/asset\.localhost\//);
   assert(source.duration >= 2.9 && source.width === 128, 'WebView2 decoded the authorized local H.264 asset.');
+  // Timeline seeks intentionally hold in unmapped footage. Establish the user's
+  // initial anchor before testing seeks, then re-anchor at the selected frame.
+  await page.getByLabel('Anchor lap',{exact:true}).selectOption('lap-1');
+  await page.getByRole('button',{name:'Sync Here',exact:true}).click();
+  await expect.poll(async () => (await snapshot()).entries.find(entry => entry.id === a.id).workspace.video.segments.length).toBe(1);
+  await saved();
   await page.getByRole('button',{name:'Play',exact:true}).click();
   await expect.poll(() => player.evaluate(element => element.currentTime)).toBeGreaterThan(.1);
   await page.getByRole('button',{name:'Pause',exact:true}).click();
@@ -122,8 +132,11 @@ try {
   // Real timeline dispatch enters the existing adapter/controller seek path.
   const timeline = page.getByRole('slider',{name:'Video timeline',exact:true});
   await timeline.focus(); await page.keyboard.press('Home');
-  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
-  await expect.poll(() => player.evaluate(element => !element.seeking && Math.abs(element.currentTime-.5)<.05)).toBe(true);
+  await expect.poll(() => player.evaluate(element => !element.seeking && element.currentTime < .05)).toBe(true);
+  for (let i = 1; i <= 5; i++) {
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => player.evaluate((element,target) => !element.seeking && Math.abs(element.currentTime-target)<.05,i/10)).toBe(true);
+  }
   await page.getByLabel('Anchor lap',{exact:true}).selectOption('lap-1');
   await page.getByRole('button',{name:'Sync Here',exact:true}).click();
   await expect.poll(async () => (await snapshot()).entries.find(entry => entry.id === a.id).workspace.video.segments.length).toBe(1);

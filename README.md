@@ -125,3 +125,9 @@ Editable SVG assets, previews, exploration and icon inventory are in [the brandi
 The session explorer provides persisted expanded, compact and hidden navigation, independent session sorting/grouping and lap ordering, contextual Locate/Refresh/Remove actions, and a temporary merge selection mode. Merge previews preserve original recordings and source-specific lap/channel/video provenance; unmerging removes only the virtual session.
 
 At narrow widths navigation becomes a keyboard-accessible modal drawer. Telemetry, Advanced and Video layouts adapt to available space down to the 600×500 native window minimum. Sidebar changes and resizing retain session/lap selections, chart zoom, channels, analysis settings and video mappings.
+
+## Website live demo
+
+Run `npm run build:website` to produce the GitHub Pages site in `dist-website/`; serve that directory with any static HTTP server. `npm run test:website` exercises the built site beneath a project subdirectory using Playwright. The landing page remains static and loads the React workspace only when a visitor opens the demo.
+
+The demo reuses the desktop `App`, session explorer, uPlot charts, track map, Advanced workspace and styles. `vite.website.config.ts` substitutes browser-only bridge and video adapters from `website/demo/`; the desktop entry and native bridge are unchanged. Two synthetic sessions share deterministic channels, lap clocks, GPS, segments and analysis data. Video is a labeled animated illustration with synchronized playback rather than recorded footage. Native file/library operations and unsupported formula evaluation are unavailable; the demo does not import XRK files or persist a user library. The Pages workflow builds this artifact whenever the website or reused frontend changes.

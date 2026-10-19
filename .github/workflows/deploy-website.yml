@@ -5,6 +5,13 @@ on:
     branches: [main]
     paths:
       - 'website/**'
+      - 'src/**'
+      - 'public/brand/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.website.config.ts'
+      - 'tsconfig.website.json'
+      - 'scripts/build-website.mjs'
       - '.github/workflows/deploy-website.yml'
   workflow_dispatch:
 
@@ -26,12 +33,21 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Build static website and browser demo
+        run: npm run build:website
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload static website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./website
+          path: ./dist-website
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

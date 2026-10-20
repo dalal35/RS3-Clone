@@ -33,6 +33,20 @@ try {
     window.__TAURI_INTERNALS__={invoke:()=>{throw new Error('Native API invoked in website');}};
   });
   await page.goto(url);
+  // Signature motion must follow native scroll, including reverse scrubbing.
+  await expect(page.locator('.telemetry-primary')).toHaveCount(1);
+  await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+  await expect.poll(()=>page.locator('.telemetry-primary').evaluate(el=>parseFloat(getComputedStyle(el).strokeDashoffset))).toBeGreaterThan(.5);
+  const initialDelta=await page.locator('.telemetry-delta').textContent();
+  await page.evaluate(()=>window.scrollTo({top:document.querySelector('.hero').offsetHeight*.55,behavior:'instant'}));
+  await expect.poll(()=>page.locator('.telemetry-primary').evaluate(el=>parseFloat(getComputedStyle(el).strokeDashoffset))).toBeLessThan(.15);
+  await expect(page.locator('.telemetry-delta')).not.toHaveText(initialDelta);
+  await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+  await expect.poll(()=>page.locator('.telemetry-primary').evaluate(el=>parseFloat(getComputedStyle(el).strokeDashoffset))).toBeGreaterThan(.5);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await expect.poll(()=>page.locator('.telemetry-primary').evaluate(el=>parseFloat(getComputedStyle(el).strokeDashoffset))).toBe(0);
+  assert.equal(await page.locator('.showcase-panel').evaluate(el=>getComputedStyle(el).transform),'none','Live reduced motion resets perspective');
+  await page.emulateMedia({reducedMotion:'no-preference'});
   await expect(page.locator('iframe')).toHaveCount(0);
   await expect(page.getByRole('link',{name:/Explore live demo/}).first()).toHaveAttribute('href','#live-demo');
   await expect(page.locator('#showcase-preview')).toBeVisible();
@@ -44,9 +58,12 @@ try {
   await expect(page.locator('#showcase-caption')).toContainText('video');
   await page.locator('#demo-open').click();
   await expect(page.locator('dialog')).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-motion-state','suspended');
+  await expect.poll(()=>page.evaluate(()=>document.getAnimations().filter(animation=>animation.playState==='running').length),{message:'Landing animation work stops during interactive demo'}).toBe(0);
   await expect(page.locator('iframe')).toHaveAttribute('src','./demo/index.html');
   await page.keyboard.press('Escape');
   await expect(page.locator('dialog')).not.toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-motion-state','active');
   await expect(page.locator('iframe')).toHaveCount(0);
   for(const selector of ['#hero-download','.header-download']){
     const link=page.locator(selector);
@@ -137,6 +154,7 @@ try {
   assert.equal(await frame.locator('body').evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Demo fits mobile viewport');
   await page.screenshot({path:'test-results/website-mobile.png'});
   await page.goto(url);
+  assert.equal(await page.locator('.showcase-panel').evaluate(el=>getComputedStyle(el).transform),'none','Mobile omits perspective showcase motion');
   await page.locator('.menu-toggle').click();
   await expect(page.locator('.menu-toggle')).toHaveAttribute('aria-expanded','true');
   await page.keyboard.press('Escape');
@@ -158,6 +176,12 @@ try {
   }
   await expect(page.locator('#mac-download')).toHaveAttribute('href',/Ten-Tenths-Telemetry_0.1.3_aarch64.dmg$/);
   await expect(page.locator('#windows-download')).toHaveAttribute('href',/Ten-Tenths-Telemetry_0.1.3_x64-setup.exe$/);
+  const noJS=await browser.newPage({javaScriptEnabled:false,viewport:{width:390,height:844}});
+  await noJS.goto(url);
+  await expect(noJS.locator('#hero-title')).toBeVisible();
+  await expect(noJS.locator('#mac-download')).toHaveAttribute('href',/aarch64.dmg$/);
+  assert.equal(await noJS.locator('.telemetry-primary').evaluate(el=>parseFloat(getComputedStyle(el).strokeDashoffset)),0,'No-JS trace remains drawn');
+  await noJS.close();
   assert.deepEqual(errors,[],'Browser errors');assert.deepEqual(consoleErrors,[],'Console errors');assert.deepEqual(badRequests,[],'Production asset paths');
   console.log('Website production-path navigation, laps, synchronized plots/map, analysis, video and mobile checks passed.');
 } finally {await browser?.close();await new Promise(r=>server.close(r));}

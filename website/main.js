@@ -1,5 +1,4 @@
-import {animate} from 'motion/mini';
-import {inView} from 'motion';
+import {createLandingMotion} from './motion.js';
 
 /* Landing interactions; the React workspace is loaded only on request. */
 (() => {
@@ -23,16 +22,7 @@ import {inView} from 'motion';
   nav?.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMenu));
   document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
 
-  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-  const reveals = new Set();
-  inView('.section-heading, .feature-details > div, .workflow-step, .insights-layout, .demo-layout, .download-card', element => {
-    if (!reducedMotion.matches) {
-      const animation = animate(element, {opacity:[0,1], transform:['translateY(18px)','translateY(0)']}, {duration:.55,ease:[.2,.7,.3,1]});
-      reveals.add(animation);
-      animation.then(() => reveals.delete(animation));
-    }
-  }, {margin:'0px 0px -35px 0px'});
-  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) { reveals.forEach(animation => animation.complete()); reveals.clear(); } });
+  const motion = createLandingMotion();
 
   const previews = {
     telemetry: {image:'telemetry', alt:'Actual Ten Tenths telemetry workspace with lap overlays, speed and RPM plots and a synchronized GPS track map; synthetic sample data',caption:'Compare speed, RPM and delta. Follow the same moment across every trace and the GPS map.'},
@@ -48,7 +38,7 @@ import {inView} from 'motion';
     preview.src = `./assets/${feature.image}.webp`;
     preview.alt = feature.alt;
     document.querySelector('#showcase-caption').textContent = feature.caption;
-    if (!reducedMotion.matches) animate(preview,{opacity:[.4,1]},{duration:.3});
+    motion.transitionPreview(preview);
   }
   tabs.forEach((tab,index) => {
     tab.addEventListener('click',()=>selectFeature(tab));
@@ -69,9 +59,10 @@ import {inView} from 'motion';
     frame.src = './demo/index.html';
     document.querySelector('#demo-mount').append(frame);
     dialog.showModal();
+    motion.suspend();
   });
   document.querySelector('#demo-close').addEventListener('click',()=>dialog.close());
-  dialog.addEventListener('close',()=> { document.querySelector('#demo-mount').replaceChildren(); document.querySelector('#demo-open').focus(); });
+  dialog.addEventListener('close',()=> { motion.resume(); document.querySelector('#demo-mount').replaceChildren(); document.querySelector('#demo-open').focus(); });
   window.addEventListener('message',event=> { if (event.origin===location.origin && event.source===document.querySelector('#demo-mount iframe')?.contentWindow && event.data==='demo:escape') dialog.close(); });
   const sections = [...document.querySelectorAll('main section[id]')];
   const links = [...document.querySelectorAll('.nav-links a')];
@@ -111,4 +102,6 @@ import {inView} from 'motion';
     } finally { clearTimeout(timer); }
   }
   hydrateLatestRelease();
+  window.addEventListener('pagehide',()=> { motion.suspend(); sectionObserver.disconnect(); });
+  window.addEventListener('pageshow',event=> { if (event.persisted) { motion.resume(); sections.forEach(section=>sectionObserver.observe(section)); } });
 })();

@@ -1,4 +1,94 @@
-# Ten Tenths Telemetry · RS3-Clone
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/readme/hero-static.svg" />
+    <img src="docs/readme/hero.svg" width="1200" alt="Ten Tenths Telemetry — Every lap tells a story. Find your next tenth. Illustrative telemetry comparison." />
+  </picture>
+</p>
+
+<h1 align="center">Your data. Your line. Your next tenth.</h1>
+
+<p align="center">A local-first desktop workspace for AiM XRK telemetry.<br />Compare laps, follow the racing line, and connect every trace to the track.</p>
+
+<p align="center">
+  <a href="#download"><img src="docs/readme/platforms.svg" height="32" alt="macOS Apple Silicon; Windows x64 beta" /></a>
+  <a href="https://github.com/dalal35/Ten-Tenths-Telemetry/releases/latest"><img src="https://img.shields.io/github/v/release/dalal35/Ten-Tenths-Telemetry?style=flat-square&amp;label=latest%20stable&amp;color=bd3442&amp;labelColor=20262e" alt="Latest stable GitHub release" /></a>
+  <a href="https://github.com/dalal35/Ten-Tenths-Telemetry/actions/workflows/release.yml"><img src="https://github.com/dalal35/Ten-Tenths-Telemetry/actions/workflows/release.yml/badge.svg?branch=main" alt="Release build workflow status on main" /></a>
+</p>
+
+<p align="center">
+  <a href="#download">Download</a> ·
+  <a href="#read-the-lap">Explore the workspace</a> ·
+  <a href="#under-the-bodywork">Architecture</a> ·
+  <a href="#documentation">Documentation</a>
+</p>
+
+---
+
+## Read the lap
+
+One moment. Every channel. The same point on the circuit.
+
+<a href="website/assets/telemetry.webp"><img src="website/assets/telemetry.webp" width="1440" alt="Actual Ten Tenths Telemetry interface with a session explorer, overlaid speed and RPM plots, time delta, GPS circuit map and corner comparison panel. Captured using synthetic demo data." /></a>
+
+<sub>Actual application interface, captured from the browser demo with synthetic session data. Click to view at full resolution. The desktop app imports your local XRK recordings.</sub>
+
+### From a whole lap to a single decision
+
+| | |
+| :--- | :--- |
+| ![Lap comparison — illustrative overlaid traces](docs/readme/comparison.svg) | ![GPS track maps — illustrative circuit trace](docs/readme/track.svg) |
+| **Find where the laps diverge.** Overlay speed, RPM and available channels. Compare time delta at aligned positions, with estimates clearly labeled. | **Put the trace on the track.** Follow the GPS racing line. Select a section to inspect corner differences; adjust automatic boundaries when needed. |
+| ![Advanced analysis — illustrative distribution and traction plots](docs/readme/analysis.svg) | ![Video synchronization — illustrative linked video and trace](docs/readme/video.svg) |
+| **Look beyond the stopwatch.** Explore G-G traction, shifts, RPM recovery and distributions. Create unit-checked custom channels and save analysis presets. | **See the moment behind the data.** Manually synchronize supported local MP4/MOV footage with telemetry. Automatic video synchronization is not implemented. |
+
+<details>
+<summary>View the Advanced workspace</summary>
+
+![Actual Advanced workspace with G-G traction, distributions and linked GPS map; synthetic demo data](website/assets/advanced.webp)
+
+<sub>Actual interface with synthetic demo data.</sub>
+
+</details>
+
+**AI coaching · in development.** Offline driving-coach work is underway separately. It is not included in the published v0.1.3 installers. Release notes remain the source of truth for download availability.
+
+---
+
+## Download
+
+<p>
+  <a href="https://github.com/dalal35/Ten-Tenths-Telemetry/releases"><img src="docs/readme/download.svg" width="220" height="32" alt="Download Ten Tenths Telemetry from GitHub Releases" /></a>
+</p>
+
+| Platform | Availability | Download |
+| :--- | :--- | :--- |
+| **macOS 13+ · Apple Silicon** | Stable v0.1.3 · M1 or newer | [Download DMG](https://github.com/dalal35/Ten-Tenths-Telemetry/releases/download/v0.1.3/Ten-Tenths-Telemetry_0.1.3_aarch64.dmg) · [Release notes](https://github.com/dalal35/Ten-Tenths-Telemetry/releases/tag/v0.1.3) |
+| **Windows 10/11 · x64** | Beta · physical GUI acceptance pending | [Windows beta](https://github.com/dalal35/Ten-Tenths-Telemetry/releases/tag/v0.1.3-windows-beta.1) · [Validation status](docs/windows-validation.md) |
+
+[All releases](https://github.com/dalal35/Ten-Tenths-Telemetry/releases) · [Latest stable](https://github.com/dalal35/Ten-Tenths-Telemetry/releases/latest) · [macOS checksums](https://github.com/dalal35/Ten-Tenths-Telemetry/releases/download/v0.1.3/SHA256SUMS)
+
+**First launch:** macOS builds are ad-hoc signed and not notarized; Windows builds are unsigned. Read the [macOS](#install-on-macos) or [Windows installation instructions](#install-on-windows) below for first-launch prompts, runtime requirements and platform limits. No automatic updater is configured.
+
+**Keep your recordings local.** Telemetry and supported local video work offline. Original files stay in place; the library stores references and workspace preferences. No developer tools are required to run a released installer.
+
+---
+
+## Under the bodywork
+
+![Local analysis architecture: XRK recordings to Rust and libxrk, through Tauri 2, to React and uPlot. Video uses system frameworks.](docs/readme/architecture.svg)
+
+Rust handles decoding and full-precision calculations. React and TypeScript present the workspace; uPlot renders synchronized channel overlays. Tauri connects them in a desktop app, with AVFoundation on macOS and Media Foundation on Windows for local video. The MIT-licensed libxrk core is pinned to a reviewed revision.
+
+**Engineering principle:** show uncertainty, missing data and platform limits where they matter. A telemetry tool should help you inspect the evidence.
+
+## Documentation
+
+[Release preflight](docs/release-preflight.md) · [macOS validation](docs/macos-release-validation.md) · [Windows feature parity](docs/windows-feature-parity.md) · [Progress & limitations](PROGRESS.md) · [Brand assets](docs/branding/README.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+<details>
+<summary><strong>Installation, development & technical reference</strong></summary>
+
+### Technical overview
 
 A local-first telemetry workspace targeting Apple Silicon macOS and Windows 10/11 x64. Import AiM XRK sessions, select laps, compare speed and RPM, and follow the racing line alongside synchronized plots. Validated GPS geometry aligns laps by physical track position; approximate corner sections expose speed, time and channel differences with explicit resolution estimates. Click a track section to focus the whole comparison. When GPS cannot support spatial alignment, delta is clearly labeled estimated or withheld.
 
@@ -10,7 +100,7 @@ The macOS 0.1.3 release includes the complete implemented workspace, including t
 
 Requires an Apple Silicon Mac (M1 or newer) running macOS 13 Ventura or later. No Node, Rust, Xcode, or development server is needed to run the app.
 
-1. Download the `Ten-Tenths-Telemetry_*_aarch64.dmg` installer from [GitHub Releases](https://github.com/dalal35/RS3-Clone/releases).
+1. Download the `Ten-Tenths-Telemetry_*_aarch64.dmg` installer from [GitHub Releases](https://github.com/dalal35/Ten-Tenths-Telemetry/releases).
 2. Open the DMG and drag **Ten Tenths Telemetry** into **Applications**. Eject the disk image and open the app from Applications.
 3. Import your local XRK recordings and optionally select local MP4/MOV footage. Local telemetry and video work offline, subject to system codec support. YouTube requires internet access and currently has a known native playback error 153; use local footage for synchronization (see [PROGRESS.md](PROGRESS.md)).
 
@@ -131,3 +221,9 @@ At narrow widths navigation becomes a keyboard-accessible modal drawer. Telemetr
 Run `npm run build:website` to produce the GitHub Pages site in `dist-website/`; serve that directory with any static HTTP server. `npm run test:website` exercises the built site beneath a project subdirectory using Playwright. The homepage is static and its Download buttons scroll to the installer section. The standalone React demo remains available at `demo/index.html`, without an embedded homepage preview.
 
 The demo reuses the desktop `App`, session explorer, uPlot charts, track map, Advanced workspace and styles. `vite.website.config.ts` substitutes browser-only bridge and video adapters from `website/demo/`; the desktop entry and native bridge are unchanged. Two synthetic sessions share deterministic channels, lap clocks, GPS, segments and analysis data. Video is a labeled animated illustration with synchronized playback rather than recorded footage. Native file/library operations and unsupported formula evaluation are unavailable; the demo does not import XRK files or persist a user library. The Pages workflow builds this artifact whenever the website or reused frontend changes.
+
+</details>
+
+---
+
+<p align="center"><sub>TEN TENTHS TELEMETRY · BUILT TO READ THE LAP</sub></p>

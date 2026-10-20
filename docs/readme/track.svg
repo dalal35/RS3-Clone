@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 170" role="img" aria-labelledby="title desc">
+<title id="title">GPS TRACK MAPS</title><desc id="desc">Decorative engineering diagram; not measured application data.</desc>
+<style>text{font-family:Arial,Helvetica,sans-serif}.mono{font-family:Consolas,Menlo,monospace}</style>
+<rect x=".5" y=".5" width="559" height="169" rx="12" fill="#10151b" stroke="#2b323c"/><path d="M24 135H536M24 95H536M24 55H536" stroke="#202731"/><text x="24" y="29" fill="#f04452" font-size="12" class="mono">02</text><text x="56" y="29" fill="#e8edf3" font-size="13" font-weight="700" letter-spacing="1.8">GPS TRACK MAPS</text><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M300 126C245 139 225 107 262 91L324 66C353 55 373 75 407 67L460 51C501 39 538 73 501 95L425 122C391 135 371 105 342 116Z" stroke="#7c8795"/><path d="M262 91L324 66C353 55 373 75 407 67" stroke="#f04452"/><circle cx="324" cy="66" r="5" fill="#f04452" stroke="#10151b"/><path d="M28 122V75M42 122V92M56 122V60M70 122V80M84 122V96" stroke="#3f4956"/></g>
+</svg>

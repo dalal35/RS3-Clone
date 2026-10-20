@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 170" role="img" aria-labelledby="title desc">
+<title id="title">ADVANCED ANALYSIS</title><desc id="desc">Decorative engineering diagram; not measured application data.</desc>
+<style>text{font-family:Arial,Helvetica,sans-serif}.mono{font-family:Consolas,Menlo,monospace}</style>
+<rect x=".5" y=".5" width="559" height="169" rx="12" fill="#10151b" stroke="#2b323c"/><path d="M24 135H536M24 95H536M24 55H536" stroke="#202731"/><text x="24" y="29" fill="#f04452" font-size="12" class="mono">03</text><text x="56" y="29" fill="#e8edf3" font-size="13" font-weight="700" letter-spacing="1.8">ADVANCED ANALYSIS</text><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M32 131V108M56 131V93M80 131V68M104 131V47M128 131V63M152 131V90M176 131V112" stroke="#566170" stroke-width="12"/><path d="M104 131V47" stroke="#f04452" stroke-width="12"/><circle cx="427" cy="89" r="47" stroke="#36404c"/><path d="M365 89H489M427 28V150" stroke="#36404c"/><path d="M393 104L408 73L433 62L456 80L450 108L422 120Z" stroke="#f04452"/></g>
+</svg>

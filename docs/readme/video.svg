@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 170" role="img" aria-labelledby="title desc">
+<title id="title">SYNCHRONIZED VIDEO</title><desc id="desc">Decorative engineering diagram; not measured application data.</desc>
+<style>text{font-family:Arial,Helvetica,sans-serif}.mono{font-family:Consolas,Menlo,monospace}</style>
+<rect x=".5" y=".5" width="559" height="169" rx="12" fill="#10151b" stroke="#2b323c"/><path d="M24 135H536M24 95H536M24 55H536" stroke="#202731"/><text x="24" y="29" fill="#f04452" font-size="12" class="mono">04</text><text x="56" y="29" fill="#e8edf3" font-size="13" font-weight="700" letter-spacing="1.8">SYNCHRONIZED VIDEO</text><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="28" y="49" width="160" height="89" rx="5" fill="#1a222c" stroke="#3f4956"/><path d="M96 73L96 115L128 94Z" fill="#cbd2db" stroke="none"/><path d="M228 116L270 72L310 80L344 56L380 119L418 81L466 62L532 76" stroke="#f04452"/><path d="M380 43V142" stroke="#e5e9ef" stroke-dasharray="3 5"/></g>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 170" role="img" aria-labelledby="title desc">
+<title id="title">LAP COMPARISON</title><desc id="desc">Decorative engineering diagram; not measured application data.</desc>
+<style>text{font-family:Arial,Helvetica,sans-serif}.mono{font-family:Consolas,Menlo,monospace}</style>
+<rect x=".5" y=".5" width="559" height="169" rx="12" fill="#10151b" stroke="#2b323c"/><path d="M24 135H536M24 95H536M24 55H536" stroke="#202731"/><text x="24" y="29" fill="#f04452" font-size="12" class="mono">01</text><text x="56" y="29" fill="#e8edf3" font-size="13" font-weight="700" letter-spacing="1.8">LAP COMPARISON</text><g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M28 98L95 70L147 61L177 120L207 83L278 58L330 49L361 112L392 73L466 51L532 62" stroke="#7c8795"/><path d="M28 108L95 81L147 72L177 131L207 94L278 69L330 60L361 123L392 84L466 62L532 73" stroke="#f04452"/></g>
+</svg>

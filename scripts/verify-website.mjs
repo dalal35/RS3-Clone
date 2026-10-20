@@ -34,7 +34,20 @@ try {
   });
   await page.goto(url);
   await expect(page.locator('iframe')).toHaveCount(0);
-  await expect(page.locator('#live-demo, #demo-open')).toHaveCount(0);
+  await expect(page.getByRole('link',{name:/Explore live demo/}).first()).toHaveAttribute('href','#live-demo');
+  await expect(page.locator('#showcase-preview')).toBeVisible();
+  await page.getByRole('tab',{name:/Grip & shifts/}).click();
+  await expect(page.locator('#showcase-preview')).toHaveAttribute('src',/advanced.webp/);
+  await page.keyboard.press('Home');
+  await expect(page.getByRole('tab',{name:/Lap comparison/})).toHaveAttribute('aria-selected','true');
+  await page.getByRole('tab',{name:/Video sync/}).click();
+  await expect(page.locator('#showcase-caption')).toContainText('video');
+  await page.locator('#demo-open').click();
+  await expect(page.locator('dialog')).toBeVisible();
+  await expect(page.locator('iframe')).toHaveAttribute('src','./demo/index.html');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('dialog')).not.toBeVisible();
+  await expect(page.locator('iframe')).toHaveCount(0);
   for(const selector of ['#hero-download','.header-download']){
     const link=page.locator(selector);
     await expect(link).toHaveAttribute('href','#download');
@@ -44,11 +57,25 @@ try {
     await expect.poll(()=>page.locator('#download').evaluate(el=>Math.abs(el.getBoundingClientRect().top))).toBeLessThan(110);
     await page.goto(url);
   }
-  await page.screenshot({path:'test-results/website-homepage.png',fullPage:true});
+  await page.getByRole('tab',{name:/Lap comparison/}).click();
+  await page.locator('#showcase-preview').scrollIntoViewIfNeeded();
+  await page.screenshot({path:'test-results/website-showcase.png',animations:'disabled'});
+  await page.goto(url);
+  await page.screenshot({path:'test-results/website-homepage.png',fullPage:true,animations:'disabled'});
   await page.goto(url+'demo/index.html');
   const frame=page;
   await expect(frame.getByRole('button',{name:'Telemetry',exact:true})).toBeVisible();
   await expect(frame.locator('.plot-row').first()).toBeVisible();
+  await frame.getByRole('button',{name:'Quick guide'}).click();
+  await expect(frame.getByRole('region',{name:'Demo quick guide'})).toBeVisible();
+  await frame.keyboard.press('Escape');
+  await expect(frame.getByRole('region',{name:'Demo quick guide'})).toHaveCount(0);
+  await frame.getByRole('slider',{name:'Synchronized telemetry cursor'}).focus();
+  await frame.keyboard.press('ArrowRight');
+  await expect(frame.locator('.primary-marker circle')).toHaveCount(1);
+  await frame.getByRole('button',{name:'Compare Turn 1',exact:true}).click();
+  await expect(frame.getByRole('button',{name:'Compare Turn 1',exact:true})).toHaveAttribute('aria-pressed','true');
+
   await expect(frame.locator('.track .primary-line')).toHaveAttribute('d',/.+/);
   await expect(frame.locator('.lap-summary')).toContainText('COMPARISON');
   await frame.locator('body').screenshot({path:'test-results/website-telemetry.png'});
@@ -78,6 +105,13 @@ try {
   await plot.hover({position:{x:100,y:50}});
   await expect(frame.locator('.readout').first()).not.toContainText('—');
   await expect(frame.locator('.primary-marker circle')).toHaveCount(1);
+  // The optional coach is supplied by the separate desktop development branch.
+  if(await frame.getByRole('button',{name:'AI Driving Coach',exact:true}).count()){
+  await frame.getByRole('button',{name:'AI Driving Coach',exact:true}).click();
+  await frame.getByRole('button',{name:'Analyze session',exact:true}).click();
+  await expect(frame.locator('.coach-workspace')).toContainText('synthetic');
+  await expect(frame.locator('.coach-terms')).toHaveCount(0);
+  }
   await frame.getByRole('button',{name:'Advanced',exact:true}).click();
   await expect(frame.locator('.advanced-workspace')).toBeVisible();
   await expect(frame.locator('.analysis-statistics')).toContainText('samples');
@@ -103,10 +137,27 @@ try {
   assert.equal(await frame.locator('body').evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Demo fits mobile viewport');
   await page.screenshot({path:'test-results/website-mobile.png'});
   await page.goto(url);
+  await page.locator('.menu-toggle').click();
+  await expect(page.locator('.menu-toggle')).toHaveAttribute('aria-expanded','true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.menu-toggle')).toHaveAttribute('aria-expanded','false');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.reload();
+  assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).scrollBehavior),'auto','Reduced motion disables smooth scrolling');
+  await expect(page.locator('#showcase-preview')).toBeVisible();
+  await page.screenshot({path:'test-results/website-homepage-mobile.png',fullPage:true,animations:'disabled'});
   await expect(page.locator('#hero-download')).toHaveText(/Download/);
   await page.locator('#hero-download').click();
   await expect(page).toHaveURL(/#download$/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Landing page fits mobile viewport');
+  for(const width of [320,768,1920]){
+    await page.setViewportSize({width,height:1000});
+    await page.goto(url);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`Homepage fits ${width}px viewport`);
+    await expect(page.locator('.hero-instrument img')).toBeVisible();
+  }
+  await expect(page.locator('#mac-download')).toHaveAttribute('href',/Ten-Tenths-Telemetry_0.1.3_aarch64.dmg$/);
+  await expect(page.locator('#windows-download')).toHaveAttribute('href',/Ten-Tenths-Telemetry_0.1.3_x64-setup.exe$/);
   assert.deepEqual(errors,[],'Browser errors');assert.deepEqual(consoleErrors,[],'Console errors');assert.deepEqual(badRequests,[],'Production asset paths');
   console.log('Website production-path navigation, laps, synchronized plots/map, analysis, video and mobile checks passed.');
 } finally {await browser?.close();await new Promise(r=>server.close(r));}

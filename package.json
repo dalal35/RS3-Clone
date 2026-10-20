@@ -26,7 +26,8 @@
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "uplot": "^1.6.32"
+    "uplot": "^1.6.32",
+    "motion": "^14.4.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

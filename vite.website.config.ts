@@ -9,6 +9,7 @@ export default defineConfig({
   resolveId(source,importer){
    if(importer?.includes('/src/')){
     if(source==='./bridge'||source==='../bridge')return fromRoot('./website/demo/bridge.ts');
+    if(source==='./Plots'&&importer.endsWith('/src/App.tsx'))return fromRoot('./website/demo/Plots.tsx');
     if(source==='./video/VideoWorkspace')return fromRoot('./website/demo/VideoWorkspace.tsx');
    }
    return null;
@@ -19,6 +20,6 @@ export default defineConfig({
    return null;
   }
  },react()],
- build:{outDir:fromRoot('./dist-website'),emptyOutDir:true,rollupOptions:{input:{demo:fromRoot('./website/demo/index.html')}}},
+ build:{outDir:fromRoot('./dist-website'),emptyOutDir:true,rollupOptions:{input:{home:fromRoot('./website/index.html'),demo:fromRoot('./website/demo/index.html')}}},
  server:{host:'127.0.0.1',port:4173,fs:{allow:[fromRoot('.')]}}
 });

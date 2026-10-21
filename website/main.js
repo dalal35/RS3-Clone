@@ -22,7 +22,7 @@ import {createLandingMotion} from './motion.js';
   nav?.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMenu));
   document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMenu(); });
 
-  const motion = createLandingMotion();
+  let motion;
 
   const previews = {
     telemetry: {image:'telemetry', alt:'Actual Ten Tenths telemetry workspace with lap overlays, speed and RPM plots and a synchronized GPS track map; synthetic sample data',caption:'Compare speed, RPM and delta. Follow the same moment across every trace and the GPS map.'},
@@ -35,10 +35,10 @@ import {createLandingMotion} from './motion.js';
     const feature = previews[tab.dataset.feature];
     tabs.forEach(button => { const selected = button === tab; button.setAttribute('aria-selected',String(selected)); button.tabIndex = selected ? 0 : -1; });
     document.querySelector('#showcase-panel').setAttribute('aria-labelledby',tab.id);
-    preview.src = `./assets/${feature.image}.webp`;
+    if (!preview.src.endsWith(`/assets/${feature.image}.webp`)) preview.src = `./assets/${feature.image}.webp`;
     preview.alt = feature.alt;
     document.querySelector('#showcase-caption').textContent = feature.caption;
-    motion.transitionPreview(preview);
+    motion?.transitionPreview(preview);
   }
   tabs.forEach((tab,index) => {
     tab.addEventListener('click',()=>selectFeature(tab));
@@ -52,17 +52,45 @@ import {createLandingMotion} from './motion.js';
     });
   });
 
+  let narrativeFeature = 'telemetry';
+  let pendingNarrativeFeature = false;
+  const syncNarrativeFeature = () => {
+    const tab = tabs.find(button => button.dataset.feature === narrativeFeature);
+    // Keyboard/pointer ownership always wins while a visitor is using the tabs.
+    if (tab && !document.querySelector('.showcase-tabs').contains(document.activeElement)) {
+      selectFeature(tab);
+      pendingNarrativeFeature = false;
+    }
+  };
+  document.addEventListener('narrative:feature',event => {
+    narrativeFeature = event.detail;
+    pendingNarrativeFeature = true;
+    syncNarrativeFeature();
+  });
+  document.querySelector('.showcase-tabs').addEventListener('focusout',() => queueMicrotask(() => {
+    if (document.documentElement.dataset.motionState !== 'active') pendingNarrativeFeature = false;
+    if (pendingNarrativeFeature) syncNarrativeFeature();
+  }));
+  motion = createLandingMotion();
+  // Decode the other real workspace views before they become the story focus.
+  const warmPreviews = () => ['advanced','video'].forEach(name => {
+    const image = new Image(); image.src = `./assets/${name}.webp`; image.decode?.().catch(()=>{});
+  });
+  window.addEventListener('scroll',warmPreviews,{once:true,passive:true});
+
   const dialog = document.querySelector('.demo-dialog');
   document.querySelector('#demo-open').addEventListener('click',() => {
-    const frame = document.createElement('iframe');
-    frame.title = 'Interactive Ten Tenths Telemetry workspace with synthetic sample data';
-    frame.src = './demo/index.html';
-    document.querySelector('#demo-mount').append(frame);
+    if (!document.querySelector('#demo-mount iframe')) {
+      const frame = document.createElement('iframe');
+      frame.title = 'Interactive Ten Tenths Telemetry workspace with synthetic sample data';
+      frame.src = './demo/index.html';
+      document.querySelector('#demo-mount').append(frame);
+    }
     dialog.showModal();
     motion.suspend();
   });
   document.querySelector('#demo-close').addEventListener('click',()=>dialog.close());
-  dialog.addEventListener('close',()=> { motion.resume(); document.querySelector('#demo-mount').replaceChildren(); document.querySelector('#demo-open').focus(); });
+  dialog.addEventListener('close',()=> { motion.resume(); document.querySelector('#demo-open').focus(); });
   window.addEventListener('message',event=> { if (event.origin===location.origin && event.source===document.querySelector('#demo-mount iframe')?.contentWindow && event.data==='demo:escape') dialog.close(); });
   const sections = [...document.querySelectorAll('main section[id]')];
   const links = [...document.querySelectorAll('.nav-links a')];

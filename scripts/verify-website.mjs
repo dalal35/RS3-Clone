@@ -4,9 +4,10 @@ import {readFile, stat} from 'node:fs/promises';
 import {resolve, extname} from 'node:path';
 import {expect} from '@playwright/test';
 import {launchBrowser} from './browser.mjs';
+import {verifyNarrative} from './verify-website-narrative.mjs';
 
 // Exercise the production artifact beneath a project prefix, as on GitHub Pages.
-const root=resolve('dist-website'), prefix='/Ten-Tenths-Telemetry/';
+const root=resolve(process.env.WEBSITE_TEST_ROOT || 'dist-website'), prefix='/Ten-Tenths-Telemetry/';
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.json':'application/json'};
 const server=createServer(async(req,res)=>{
   try {
@@ -33,20 +34,7 @@ try {
     window.__TAURI_INTERNALS__={invoke:()=>{throw new Error('Native API invoked in website');}};
   });
   await page.goto(url);
-  // Signature motion must follow native scroll, including reverse scrubbing.
-  await expect(page.locator('.telemetry-primary')).toHaveCount(1);
-  await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
-  await expect.poll(()=>page.locator('.telemetry-primary').evaluate(el=>parseFloat(getComputedStyle(el).strokeDashoffset))).toBeGreaterThan(.5);
-  const initialDelta=await page.locator('.telemetry-delta').textContent();
-  await page.evaluate(()=>window.scrollTo({top:document.querySelector('.hero').offsetHeight*.55,behavior:'instant'}));
-  await expect.poll(()=>page.locator('.telemetry-primary').evaluate(el=>parseFloat(getComputedStyle(el).strokeDashoffset))).toBeLessThan(.15);
-  await expect(page.locator('.telemetry-delta')).not.toHaveText(initialDelta);
-  await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
-  await expect.poll(()=>page.locator('.telemetry-primary').evaluate(el=>parseFloat(getComputedStyle(el).strokeDashoffset))).toBeGreaterThan(.5);
-  await page.emulateMedia({reducedMotion:'reduce'});
-  await expect.poll(()=>page.locator('.telemetry-primary').evaluate(el=>parseFloat(getComputedStyle(el).strokeDashoffset))).toBe(0);
-  assert.equal(await page.locator('.showcase-panel').evaluate(el=>getComputedStyle(el).transform),'none','Live reduced motion resets perspective');
-  await page.emulateMedia({reducedMotion:'no-preference'});
+  await verifyNarrative({page,browser,url,origin,errors,badRequests,consoleErrors});
   await expect(page.locator('iframe')).toHaveCount(0);
   await expect(page.getByRole('link',{name:/Explore live demo/}).first()).toHaveAttribute('href','#live-demo');
   await expect(page.locator('#showcase-preview')).toBeVisible();
@@ -64,7 +52,17 @@ try {
   await page.keyboard.press('Escape');
   await expect(page.locator('dialog')).not.toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-motion-state','active');
-  await expect(page.locator('iframe')).toHaveCount(0);
+  await expect(page.locator('iframe')).toHaveCount(1);
+  await page.locator('#demo-open').click();
+  await expect(page.locator('iframe')).toHaveCount(1);
+  const demoFrame=page.frameLocator('#demo-mount iframe');
+  await expect(demoFrame.getByRole('button',{name:'Telemetry',exact:true})).toBeVisible();
+  await demoFrame.getByRole('slider',{name:'Synchronized telemetry cursor'}).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(demoFrame.locator('.primary-marker circle')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('dialog')).not.toBeVisible();
+  await expect(page.locator('#demo-open')).toBeFocused();
   for(const selector of ['#hero-download','.header-download']){
     const link=page.locator(selector);
     await expect(link).toHaveAttribute('href','#download');
@@ -172,7 +170,7 @@ try {
     await page.setViewportSize({width,height:1000});
     await page.goto(url);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`Homepage fits ${width}px viewport`);
-    await expect(page.locator('.hero-instrument img')).toBeVisible();
+    await expect(page.locator('.hero-trace svg')).toBeVisible();
   }
   await expect(page.locator('#mac-download')).toHaveAttribute('href',/Ten-Tenths-Telemetry_0.1.3_aarch64.dmg$/);
   await expect(page.locator('#windows-download')).toHaveAttribute('href',/Ten-Tenths-Telemetry_0.1.3_x64-setup.exe$/);

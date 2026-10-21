@@ -19,7 +19,7 @@ export function createLandingMotion() {
     hero: select('.hero-content'), trace: select('.hero-instrument'),
     primary: select('.telemetry-primary'), reference: select('.telemetry-reference'),
     cursor: select('.telemetry-cursor'), workspace: select('.workspace-stage'),
-    workspaceCursor: select('.workspace-cursor'), marker: select('.thread-marker'),
+    marker: select('.thread-marker'),
     comparison: select('.signal-comparison'), grip: select('.grip-markers'),
     video: select('.video-cursor'), debrief: select('.debrief-marker > span'),
     demo: select('.demo-window'), demoMarker: select('.demo-trace-marker'),
@@ -85,6 +85,17 @@ export function createLandingMotion() {
       for (let node = element; node; node = node.offsetParent) left += node.offsetLeft;
       return {x:left + element.offsetWidth * x,y:top(element) + element.offsetHeight * y};
     };
+    // Keep the trajectory in the measured outer gutter for the entire sticky
+    // workspace. Its document anchors must not depend on the current sticky top.
+    const heading = anchor('#features .section-heading');
+    const gutter = heading.x / 2;
+    const launchAnchor = anchor('.hero-trace', .72, .65);
+    const workspaceRoute = [
+      launchAnchor,
+      {x:launchAnchor.x, y:anchor('.trace-destination', 0, 1).y + 12},
+      {x:gutter, y:anchor('.hero-foot > span').y - 16},
+      {x:gutter, y:anchor('.workflow-grid').y - 28},
+    ];
     geometry = {
       height, total: Math.max(1, root.scrollHeight - height),
       workspace: top(feature),
@@ -93,8 +104,7 @@ export function createLandingMotion() {
       debrief: top(debrief), demo: top(demo), finish: top(finish),
       steps: steps.map(element => ({top:top(element), height:element.offsetHeight})),
       rail: select('.thread-track').getBoundingClientRect().height,
-      route: [anchor('.hero-trace', .72, .65),anchor('.workspace-image', .26, .1),
-        ...chapters.map(element => ({...anchor(`[data-story-feature="${element.dataset.storyFeature}"]`),x:anchor(`[data-story-feature="${element.dataset.storyFeature}"]`).x - 25,y:top(element) + 47})),
+      route: [...workspaceRoute,
         ...numbers.map((element,index) => anchor(`.workflow-step:nth-child(${index+1}) .workflow-number`,0,1)),
         anchor('.debrief-marker',0,.5),anchor('.demo-window',.2,.5),anchor('.finish-marker',1,.5)]
     };
@@ -165,14 +175,12 @@ export function createLandingMotion() {
     const value = `−${(launch * .24).toFixed(2)} s`;
     if (lastDelta !== value) { delta.textContent = value; lastDelta = value; }
     if (!mobile) {
-      style(elements.workspace, {transform:`translateY(${mix(22,0,opening)}px) scale(${mix(1.22,1,opening)})`});
+      style(elements.workspace, {transform:`translateY(${mix(22,0,opening)}px)`});
     }
-    // The same analysis cursor hands attention from lap overlay to grip to video.
-    style(elements.workspaceCursor, {left:`${mix(26,78,travel)}%`,opacity:String(mix(.65,.25,travel)),transform:`scaleY(${mix(.9,.65,travel)})`});
     // Soften only the short handoff window. Both image choice and emphasis are
     // deterministic functions of position, including on reverse scroll.
     const distance = Math.min(...g.features.slice(1).map(feature => Math.abs(position - (feature.top - h * .55))));
-    style(elements.preview, {opacity:String(mix(.7,1,distance / (h * .16))),transform:mobile?'none':`scale(${mix(1.65,1,opening)})`,transformOrigin:'50% 72%'});
+    style(elements.preview, {opacity:String(mix(.7,1,distance / (h * .16))),transform:'none'});
     chapters.forEach((chapter,index) => {
       const p = between(position, g.features[index].top - h * .9, g.features[index].top - h * .35);
       style(chapter, {opacity:String(mix(.55,1,p)),transform:`translateY(${mix(mobile ? 8 : 24,0,p)}px)`});

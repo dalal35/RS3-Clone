@@ -4,6 +4,7 @@ import {readFile, stat} from 'node:fs/promises';
 import {resolve, extname} from 'node:path';
 import {expect} from '@playwright/test';
 import {launchBrowser} from './browser.mjs';
+import {verifyWorkspaceRoute} from './verify-workspace-route.mjs';
 import {verifyNarrative} from './verify-website-narrative.mjs';
 
 // Exercise the production artifact beneath a project prefix, as on GitHub Pages.
@@ -33,6 +34,9 @@ try {
   await page.addInitScript(()=>{
     window.__TAURI_INTERNALS__={invoke:()=>{throw new Error('Native API invoked in website');}};
   });
+  await page.goto(url);
+  await verifyWorkspaceRoute({page,url});
+  await page.setViewportSize({width:1440,height:1000});
   await page.goto(url);
   await verifyNarrative({page,browser,url,origin,errors,badRequests,consoleErrors});
   await expect(page.locator('iframe')).toHaveCount(0);
